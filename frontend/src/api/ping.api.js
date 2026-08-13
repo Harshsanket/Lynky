@@ -2,7 +2,7 @@ import { api } from "./client.api";
 
 export const checkBackendHealth = async () => {
   try {
-    const data = await api("/api/ping");
+    const data = await api("/ping");
 
     return {
       online: true,

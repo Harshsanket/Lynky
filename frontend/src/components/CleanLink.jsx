@@ -1,75 +1,115 @@
-import { useState } from "react";
-import { ClipboardPen } from "lucide-react"
-const TRACKING_PARAMS = [
-  "utm_source",
-  "utm_medium",
-  "utm_campaign",
-  "utm_term",
-  "utm_content",
-  "fbclid",
-  "gclid",
-  "gclsrc",
-  "dclid",
-  "msclkid",
-  "twclid",
-  "yclid",
-  "igshid",
-  "mc_cid",
-  "mc_eid",
-  "ref",
-  "ref_src",
-  "ref_url",
-  "_ga",
-  "spm",
-];
+import { useRef, useState } from 'react';
+import {
+  Clipboard,
+  ArrowRight,
+  X,
+  LoaderCircle,
+  Copy,
+  Check,
+} from 'lucide-react';
 
-function cleanLink(raw) {
-  try {
-    const url = new URL(raw.trim());
+import { createShortUrl } from '../api/url.api';
 
-    const trackingParams = new Set(
-      TRACKING_PARAMS.map((param) => param.toLowerCase())
-    );
-
-    [...url.searchParams.keys()].forEach((key) => {
-      const normalizedKey = key.toLowerCase();
-
-      if (
-        trackingParams.has(normalizedKey) ||
-        normalizedKey.startsWith("utm_")
-      ) {
-        url.searchParams.delete(key);
-      }
-    });
-
-    return url.toString();
-  } catch {
-    return null;
-  }
-}
+const COOLDOWN_MS = 3000;
 
 function UrlCleaner() {
-  const [input, setInput] = useState("");
+  const [input, setInput] = useState('');
   const [result, setResult] = useState(null);
+
   const [error, setError] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+
   const [copied, setCopied] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [cooldown, setCooldown] = useState(false);
+
+  const cooldownTimer = useRef(null);
+
+  function triggerCooldown() {
+    setCooldown(true);
+
+    clearTimeout(cooldownTimer.current);
+
+    cooldownTimer.current = setTimeout(() => {
+      setCooldown(false);
+    }, COOLDOWN_MS);
+  }
+
+  async function runShortener(value) {
+    const url = value.trim();
+
+    if (!url || loading || cooldown || result) return;
+
+    setLoading(true);
+    setError(false);
+    setErrorMessage('');
+    setCopied(false);
+
+    try {
+      const response = await createShortUrl(url);
+
+      setResult(response.data.shortUrl);
+    } catch (error) {
+      console.error('Failed to shorten URL:', error);
+
+      setError(true);
+      setErrorMessage(
+        error?.response?.data?.message ||
+          error?.message ||
+          'Unable to shorten this URL.',
+      );
+    } finally {
+      setLoading(false);
+      triggerCooldown();
+    }
+  }
 
   function handleSubmit(e) {
     e.preventDefault();
+    runShortener(input);
+  }
 
-    if (!input.trim()) return;
+  async function handlePasteButtonClick() {
+    if (loading || cooldown || result) return;
 
-    const cleaned = cleanLink(input);
+    try {
+      const text = await navigator.clipboard.readText();
 
-    if (cleaned === null) {
+      const value = text.trim();
+
+      if (!value) return;
+
+      setInput(value);
+
+      await runShortener(value);
+    } catch {
       setError(true);
-      setResult(null);
-      return;
+      setErrorMessage('Unable to read from clipboard.');
     }
+  }
 
+  function handleInputPaste(e) {
+    const pasted = e.clipboardData.getData('text').trim();
+
+    if (!pasted) return;
+
+    e.preventDefault();
+
+    setInput(pasted);
+
+    setTimeout(() => {
+      runShortener(pasted);
+    }, 0);
+  }
+
+  function handleClear() {
+    setInput('');
+    setResult(null);
     setError(false);
-    setResult(cleaned);
+    setErrorMessage('');
     setCopied(false);
+
+    triggerCooldown();
   }
 
   async function handleCopy() {
@@ -88,54 +128,35 @@ function UrlCleaner() {
     }
   }
 
+  const disabled = loading || cooldown;
+
   return (
     <div
       className="w-full rounded-lg border"
       style={{
-        borderColor: "var(--color-border)",
-        backgroundColor: "var(--color-bg-alt)",
+        borderColor: 'var(--color-border)',
+        backgroundColor: 'var(--color-bg-alt)',
       }}
     >
       <div
         className="flex items-center gap-2 border-b px-4 py-2.5"
-        style={{ borderColor: "var(--color-border)" }}
+        style={{
+          borderColor: 'var(--color-border)',
+        }}
       >
-        <ClipboardPen
-  className="h-4 w-4"
-  style={{
-    color: "var(--color-clean)",
-    opacity: 0.5,
-  }}
-/>
-        {/* <span
-          className="h-2.5 w-2.5 rounded-full"
+        <Clipboard
+          className="h-4 w-4"
           style={{
-            backgroundColor: "var(--color-dirty)",
+            color: 'var(--color-clean)',
             opacity: 0.5,
           }}
         />
-
-        <span
-          className="h-2.5 w-2.5 rounded-full"
-          style={{
-            backgroundColor: "var(--color-ink-soft)",
-            opacity: 0.3,
-          }}
-        />
-
-        <span
-          className="h-2.5 w-2.5 rounded-full"
-          style={{
-            backgroundColor: "var(--color-clean)",
-            opacity: 0.5,
-          }}
-        /> */}
 
         <span
           className="ml-2 text-xs tracking-wide"
           style={{
-            fontFamily: "var(--font-mono)",
-            color: "var(--color-ink-soft)",
+            fontFamily: 'var(--font-mono)',
+            color: 'var(--color-ink-soft)',
           }}
         >
           paste a link to see it cleaned
@@ -143,89 +164,128 @@ function UrlCleaner() {
       </div>
 
       <div className="px-4 py-6 sm:px-6 sm:py-8">
-        <form
-          onSubmit={handleSubmit}
-          className="flex flex-col gap-3 sm:flex-row"
-        >
-          <input
-            type="url"
-            value={input}
-            onChange={(e) => {
-              setInput(e.target.value);
-              setError(false);
-            }}
-            placeholder="https://example.com/product?utm_source=..."
-            className="w-full rounded-md border bg-transparent px-3 py-2.5 text-sm outline-none"
+        <form onSubmit={handleSubmit}>
+          <div
+            className="flex min-h-11 w-full items-center gap-2 rounded-md border px-3"
             style={{
-              borderColor: "var(--color-border)",
-              fontFamily: "var(--font-mono)",
-              color: "var(--color-ink)",
-            }}
-          />
-
-          <button
-            type="submit"
-            className="shrink-0 rounded-md px-4 py-2.5 text-sm"
-            style={{
-              backgroundColor: "var(--color-ink)",
-              color: "var(--color-bg-alt)",
-              fontFamily: "var(--font-body)",
-              fontWeight: 500,
+              borderColor: 'var(--color-border)',
+              backgroundColor: 'transparent',
             }}
           >
-            Clean it
-          </button>
+            <div className="min-w-0 flex-1 overflow-hidden">
+              {!result ? (
+                <input
+                  type="url"
+                  value={input}
+                  onChange={(e) => {
+                    setInput(e.target.value);
+                    setError(false);
+                    setErrorMessage('');
+                  }}
+                  onPaste={handleInputPaste}
+                  placeholder="https://example.com/product?utm_source=..."
+                  disabled={loading}
+                  className="w-full bg-transparent py-2.5 text-sm outline-none"
+                  style={{
+                    fontFamily: 'var(--font-mono)',
+                    color: 'var(--color-ink)',
+                  }}
+                />
+              ) : (
+                <div
+                  className="relative overflow-hidden whitespace-nowrap py-2.5 text-sm"
+                  style={{
+                    fontFamily: 'var(--font-mono)',
+                  }}
+                >
+                  <span
+                    className="url-result-reveal relative inline-block"
+                    style={{
+                      color: 'var(--color-clean)',
+                    }}
+                  >
+                    {result}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {result ? (
+              <div className="flex shrink-0 items-center gap-1">
+                <button
+                  type="button"
+                  onClick={handleCopy}
+                  aria-label="Copy shortened URL"
+                  className="flex h-8 w-8 items-center justify-center rounded-md"
+                  style={{
+                    color: copied
+                      ? 'var(--color-clean)'
+                      : 'var(--color-ink-soft)',
+                  }}
+                >
+                  {copied ? (
+                    <Check className="h-4 w-4" />
+                  ) : (
+                    <Copy className="h-4 w-4" />
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleClear}
+                  disabled={disabled}
+                  aria-label="Clear URL"
+                  className="flex h-8 w-8 items-center justify-center rounded-md disabled:cursor-not-allowed"
+                  style={{
+                    color: 'var(--color-ink-soft)',
+                    opacity: disabled ? 0.4 : 1,
+                  }}
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            ) : (
+              <button
+                type={input.trim() ? 'submit' : 'button'}
+                onClick={input.trim() ? undefined : handlePasteButtonClick}
+                disabled={disabled}
+                aria-label={
+                  loading
+                    ? 'Cleaning link'
+                    : input.trim()
+                      ? 'Submit link'
+                      : 'Paste link'
+                }
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md disabled:cursor-not-allowed"
+                style={{
+                  backgroundColor: 'var(--color-ink)',
+                  color: 'var(--color-bg-alt)',
+                  opacity: disabled ? 0.5 : 1,
+                }}
+              >
+                {loading ? (
+                  <LoaderCircle className="h-4 w-4 animate-spin" />
+                ) : input.trim() ? (
+                  <ArrowRight className="h-4 w-4" />
+                ) : (
+                  <Clipboard className="h-4 w-4" />
+                )}
+              </button>
+            )}
+          </div>
         </form>
 
         {error && (
           <p
             className="mt-3 text-xs"
             style={{
-              fontFamily: "var(--font-body)",
-              color: "var(--color-dirty)",
+              fontFamily: 'var(--font-body)',
+              color: 'var(--color-dirty)',
             }}
           >
-            That doesn't look like a valid URL — paste the full link,
-            including https://
+            {errorMessage ||
+              "That doesn't look like a valid URL — paste the full link, including https://"}
           </p>
-        )}
-
-        {result && !error && (
-          <div className="mt-4 flex items-start justify-between gap-3">
-            <p
-              className="animate-fade-up break-all text-sm leading-relaxed sm:text-base"
-              style={{
-                fontFamily: "var(--font-mono)",
-                color: "var(--color-clean)",
-              }}
-            >
-              {result}
-
-              <span
-                className="ml-3 rounded-full px-2 py-0.5 text-xs align-middle"
-                style={{
-                  backgroundColor: "var(--color-clean-soft)",
-                  color: "var(--color-clean)",
-                  fontFamily: "var(--font-body)",
-                }}
-              >
-                cleaned
-              </span>
-            </p>
-
-            <button
-              type="button"
-              onClick={handleCopy}
-              className="shrink-0 rounded-md border px-3 py-1.5 text-xs"
-              style={{
-                borderColor: "var(--color-border)",
-                color: "var(--color-ink-soft)",
-                fontFamily: "var(--font-body)",
-              }}
-            >
-              {copied ? "Copied" : "Copy"}
-            </button>
-          </div>
         )}
       </div>
     </div>
