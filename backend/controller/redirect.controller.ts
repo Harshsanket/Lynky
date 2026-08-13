@@ -10,10 +10,10 @@ export const redirectToOriginalUrl = async (
 
     const link = await Link.findOne({
       code: code,
-      expiresAt: {
-        $gt: new Date(),
-      },
-    }).lean();
+      // expiresAt: {
+      //   $gt: new Date(),
+      // },
+    });
 
     if (!link) {
       return res.status(404).json({
