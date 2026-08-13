@@ -19,4 +19,7 @@ app.use("/api/v1", pingRoutes);
 import urlRoutes from "../routes/url.routes.js"
 app.use("/api/v1", linkRateLimitMiddleware, urlRoutes);
 
+import redirect from "../routes/redirect.routes.js"
+app.use("/", redirect);
+
 export default app;
