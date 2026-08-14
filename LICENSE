@@ -1,21 +1,198 @@
-MIT License
+# Lynky License
 
-Copyright (c) 2026 Harsh Sanket
+**Version 1.0 --- August 2026**
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+Copyright © 2026 Harsh Sanket. All rights reserved except for the
+permissions expressly granted below.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+This license governs use of the Lynky source code, including its
+frontend, backend, associated software, and substantial portions or
+derivatives of that software (the **"Software"**).
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+## 1. Personal and Non-Commercial Use
+
+Subject to this license, you are granted a limited, non-exclusive,
+non-transferable, revocable license to access, use, run, study, copy,
+and modify the Software free of charge solely for personal and
+non-commercial purposes.
+
+Permitted uses include personal projects, education, learning, research,
+experimentation, and evaluation, provided that the use is not primarily
+intended for commercial advantage or monetary compensation.
+
+## 2. Commercial Use
+
+Commercial use is **not permitted** under the free personal-use grant.
+
+A separate paid commercial license and prior written authorization are
+required before using the Software for commercial purposes.
+
+Commercial use includes, without limitation:
+
+-   incorporating the Software or substantial portions of it into a paid
+    product or service;
+-   operating the Software as part of a revenue-generating business,
+    platform, or service;
+-   offering a paid, hosted, managed, or Software-as-a-Service version
+    of Lynky;
+-   selling, sublicensing, licensing, or commercially redistributing the
+    Software;
+-   using the Software where it provides material functionality to a
+    commercial product or service; or
+-   other use primarily intended to obtain commercial advantage or
+    monetary compensation.
+
+For commercial licensing, contact:
+
+**harshsanket.dev@gmail.com**
+
+## 3. Attribution and Notices
+
+You may not remove or intentionally obscure copyright, license, or
+attribution notices distributed with the Software.
+
+You may not falsely claim authorship of Lynky or represent the original
+Software as your own work.
+
+## 4. Redistribution
+
+Non-commercial redistribution of the Software or modified versions is
+permitted only when:
+
+1.  this license and applicable copyright notices are included;
+2.  the redistribution remains non-commercial;
+3.  recipients are informed that commercial use requires a separate
+    license; and
+4.  the redistribution does not imply endorsement by or affiliation with
+    the copyright holder.
+
+This license does not grant permission to sell, commercially sublicense,
+or commercially redistribute the Software.
+
+## 5. Modifications and Derivative Works
+
+You may modify the Software for uses otherwise permitted by this
+license.
+
+Creating a modification or derivative work does not remove the
+restrictions of this license. Commercial use of a modified or derivative
+version remains subject to the commercial licensing requirement.
+
+## 6. No Trademark Rights
+
+This license does not grant rights to use the names **Lynky**, **Harsh
+Sanket**, associated logos, branding, domain names, or other identifiers
+as trademarks, service marks, or branding for another product or
+service, except for reasonable factual attribution.
+
+## 7. No Warranty
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, THE SOFTWARE AND ANY
+RELATED SERVICES ARE PROVIDED **"AS IS"** AND **"AS AVAILABLE"**,
+WITHOUT WARRANTIES OF ANY KIND, WHETHER EXPRESS, IMPLIED, STATUTORY, OR
+OTHERWISE.
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, THE COPYRIGHT HOLDER
+DISCLAIMS ALL WARRANTIES, INCLUDING IMPLIED WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE,
+NON-INFRINGEMENT, ACCURACY, RELIABILITY, AVAILABILITY, SECURITY, AND
+ERROR-FREE OPERATION.
+
+There is no guarantee that Lynky will identify or remove every tracking
+parameter, preserve every functional URL parameter, produce a valid
+destination in every case, remain continuously available, or prevent
+tracking by destination websites, applications, networks, or third
+parties.
+
+## 8. Limitation of Liability
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT SHALL THE
+COPYRIGHT HOLDER, CONTRIBUTORS, OR PERSONS ASSOCIATED WITH THE PROJECT
+BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY,
+PUNITIVE, OR CONSEQUENTIAL DAMAGES, OR FOR ANY LOSS OF DATA, PROFITS,
+REVENUE, BUSINESS, GOODWILL, PRIVACY, SECURITY, OR OTHER LOSS, ARISING
+FROM OR RELATED TO THE SOFTWARE OR ITS USE, INABILITY TO USE,
+MODIFICATION, DISTRIBUTION, OR RELIANCE UPON IT.
+
+YOU USE THE SOFTWARE AT YOUR OWN RISK.
+
+Nothing in this license excludes or limits liability to the extent that
+such liability cannot lawfully be excluded or limited under applicable
+law.
+
+## 9. User Responsibility
+
+You are responsible for determining whether your use of the Software is
+lawful and appropriate for your circumstances.
+
+You are also responsible for reviewing cleaned or shortened URLs where
+accuracy or destination integrity is important. Lynky is not a
+substitute for security, privacy, legal, or compliance controls.
+
+## 10. Third-Party Services and Content
+
+Lynky may interact with, redirect to, depend upon, or reference
+third-party websites, infrastructure, databases, libraries, rulesets,
+APIs, or services.
+
+The copyright holder does not control and is not responsible for the
+availability, security, privacy practices, content, conduct, terms, or
+operation of third parties.
+
+Third-party components remain subject to their respective licenses and
+terms.
+
+## 11. Changes to the License and Terms
+
+The copyright holder reserves the right to publish revised license
+terms, usage terms, conditions, pricing, or commercial licensing
+requirements for **future versions or future distributions** of the
+Software.
+
+A revised license does not automatically revoke rights already granted
+to a particular copy or version of the Software under the license that
+accompanied that copy, except where separately agreed or where
+applicable law permits otherwise.
+
+Continued use of newly released or newly distributed versions may
+require acceptance of the license terms accompanying those versions.
+
+## 12. Termination
+
+Your rights under this license terminate automatically if you materially
+violate its terms.
+
+Upon termination, you must cease any use, distribution, or other
+activity that is no longer authorized by this license.
+
+Provisions that by their nature should survive termination, including
+ownership, warranty disclaimers, and limitations of liability, will
+survive termination to the extent permitted by law.
+
+## 13. Ownership
+
+The Software is licensed, not sold.
+
+Except for the limited permissions expressly granted by this license,
+all rights, title, and interest in the Software are reserved by the
+copyright holder.
+
+## 14. Severability
+
+If any provision of this license is determined to be invalid, unlawful,
+or unenforceable, that provision will be limited or modified to the
+minimum extent necessary where legally permissible, and the remaining
+provisions will continue in effect to the extent permitted by applicable
+law.
+
+## 15. Entire License
+
+This document constitutes the license governing the permissions granted
+here unless a separate written commercial license or other agreement has
+been entered into with the copyright holder.
+
+## 16. Contact
+
+Commercial licensing and license-related inquiries:
+
+**harshsanket.dev@gmail.com**
