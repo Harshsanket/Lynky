@@ -2,11 +2,11 @@ import { Link } from "../models/link.models.js";
 import { logError } from "./logger.js";
 
 export const findExistingUrl = async (
-  cleanedUrl: string
+  urlHash: string
 ) => {
   try {
     return await Link.findOne({
-      originalUrl: cleanedUrl,
+      urlHash,
       expiresAt: {
         $gt: new Date(),
       },
@@ -18,7 +18,7 @@ export const findExistingUrl = async (
       {
         operation: "findExistingShortUrl",
         model: "Link",
-        cleanedUrl,
+        urlHash,
       }
     );
 

@@ -4,6 +4,7 @@ import Home from "./pages/Home";
 import NotFound from "./pages/NotFound";
 import { Analytics } from "@vercel/analytics/react"
 import API from "./pages/API";
+import  API_Usage  from "./pages/API_Usage";
 import About from "./pages/About";
 import Privacy from "./pages/Privacy";
 
@@ -14,6 +15,7 @@ function App() {
         <Route element={<Layout />}>
           <Route path="/" element={<Home />} />
           <Route path="/api" element={<API />} />
+          <Route path="/api/usage" element={<API_Usage />} />
           <Route path="/privacy" element={<Privacy />} />
           <Route path="/about" element={<About />} />
           <Route path="*" element={<NotFound />} />

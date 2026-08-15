@@ -10,7 +10,8 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "provision:keys": "tsx scripts/provision-api-keys.ts"
   },
   "dependencies": {
     "cors": "^2.8.6",

@@ -20,10 +20,7 @@ export const createShortUrlController = async (
     return res.status(201).json({
       success: true,
       data: {
-        originalUrl: result.originalUrl,
         shortUrl: result.shortUrl,
-        code: result.code,
-        expiresAt: result.expiresAt,
       },
     });
   } catch (error) {

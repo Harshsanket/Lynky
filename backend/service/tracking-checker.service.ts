@@ -1,6 +1,8 @@
-import { TRACKING_PARAMETERS } from "./list-tracking-parameter.service.js";
-import { TRACKING_PREFIXES } from "./list-tracking-prefix.service.js";
-import { TRACKING_PATTERNS } from "./list-tracking-pattern.service.js";
+import {
+  TRACKING_PARAMETERS,
+  TRACKING_PREFIXES,
+  TRACKING_PATTERNS,
+} from "./tracking-rules.loader.service.js";
 
 export const isTrackingParameter = (
   key: string

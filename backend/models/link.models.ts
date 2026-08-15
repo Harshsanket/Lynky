@@ -3,6 +3,7 @@ import mongoose, { Document, Schema } from "mongoose";
 export interface ILink extends Document {
   code: string;
   originalUrl: string;
+  urlHash: string;
   createdAt: Date;
   expiresAt: Date;
 }
@@ -20,6 +21,13 @@ const linkSchema = new Schema<ILink>(
     originalUrl: {
       type: String,
       required: true,
+      trim: true,
+    },
+
+    urlHash: {
+      type: String,
+      required: true,
+      index: true,
       trim: true,
     },
 

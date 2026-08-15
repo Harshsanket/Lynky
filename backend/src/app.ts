@@ -21,6 +21,15 @@ app.use("/api/v1", pingRoutes);
 import urlRoutes from "../routes/url.routes.js"
 app.use("/api/v1", linkRateLimitMiddleware, databaseConnectionMiddleware, urlRoutes);
 
+import externalApiRoutes from "../routes/external-api.routes.js"
+app.use("/api/v1/api", databaseConnectionMiddleware, linkRateLimitMiddleware, externalApiRoutes);
+
+import apiKeyRoutes from "../routes/api-key.routes.js"
+app.use("/api/v1/api-keys", apiKeyRoutes);
+
+import statsRoutes from "../routes/stats.routes.js"
+app.use("/api/v1", databaseConnectionMiddleware, statsRoutes);
+
 import redirect from "../routes/redirect.routes.js"
 app.use("/", databaseConnectionMiddleware, redirect);
 

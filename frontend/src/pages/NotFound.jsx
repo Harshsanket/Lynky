@@ -18,7 +18,6 @@ export default function NotFound() {
             Let's get you back to somewhere real.
           </p>
 
-          {/* the "broken" url, styled like the hero's link strip */}
           <div className="w-full max-w-md rounded-lg border border-border bg-bg-alt">
             <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
               <span

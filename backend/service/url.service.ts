@@ -7,26 +7,69 @@ import { cleanUrl } from './url-cleaner.service.js';
 import { validateUrl } from './url-validator.service.js';
 import { findExistingUrl } from './url-existance-checker.service.js';
 import { getExpirationDate } from './url-expiration.service.js';
+import { encryptUrl } from './encryption.service.js';
 import { logError } from './logger.js';
+
+const getOwnOrigins = (): string[] => {
+  return [process.env.PUBLIC_URL, process.env.FRONTEND_URL]
+    .filter((origin): origin is string => Boolean(origin))
+    .map((origin) => origin.replace(/\/$/, ''));
+};
+
+const assertNotOwnLink = (parsedUrl: URL): void => {
+  const ownOrigins = getOwnOrigins();
+
+  if (ownOrigins.length === 0) {
+    return;
+  }
+
+  const normalized = `${parsedUrl.origin}${parsedUrl.pathname}`.replace(
+    /\/$/,
+    ''
+  );
+
+  for (const ownOrigin of ownOrigins) {
+    if (
+      normalized === ownOrigin ||
+      normalized.startsWith(`${ownOrigin}/`)
+    ) {
+      throw new Error(
+        "Cannot give a short code for Lynky's own link."
+      );
+    }
+  }
+};
 
 export const createShortUrl = async (inputUrl: string) => {
   try {
-    validateUrl(inputUrl);
+    const parsedUrl = validateUrl(inputUrl);
+
+    assertNotOwnLink(parsedUrl);
 
     const cleanedUrl = cleanUrl(inputUrl);
 
-    const existingUrl = await findExistingUrl(cleanedUrl);
+    const urlHash = hashUrl(cleanedUrl);
+
+    const existingUrl = await findExistingUrl(urlHash);
 
     if (existingUrl) {
+      const expiresAt = getExpirationDate();
+
+      const link = await Link.findByIdAndUpdate(
+        existingUrl._id,
+        { $set: { expiresAt } },
+        { returnDocument: 'after' }
+      ).lean();
+
+      const refreshedExpiresAt = link?.expiresAt ?? expiresAt;
+
       return {
         code: existingUrl.code,
-        originalUrl: existingUrl.originalUrl,
+        originalUrl: cleanedUrl,
         shortUrl: getPublicUrl(existingUrl.code),
-        expiresAt: existingUrl.expiresAt,
+        expiresAt: refreshedExpiresAt,
       };
     }
-
-    const urlHash = hashUrl(cleanedUrl);
 
     /* ---------------------------------------------------------------------- */
     /* Calculate expiration                                                   */
@@ -52,7 +95,8 @@ export const createShortUrl = async (inputUrl: string) => {
       try {
         const link = await Link.create({
           code,
-          originalUrl: cleanedUrl,
+          originalUrl: encryptUrl(cleanedUrl),
+          urlHash,
           expiresAt,
         });
 
@@ -60,7 +104,7 @@ export const createShortUrl = async (inputUrl: string) => {
 
         return {
           code: link.code,
-          originalUrl: link.originalUrl,
+          originalUrl: cleanedUrl,
           shortUrl,
           expiresAt: link.expiresAt,
         };

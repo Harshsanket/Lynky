@@ -1,5 +1,13 @@
 const API_URL = import.meta.env.VITE_API_URL;
 
+export class ApiError extends Error {
+  constructor(status, data) {
+    super(data?.message || `API error: ${status}`);
+    this.status = status;
+    this.data = data;
+  }
+}
+
 export const api = async (endpoint, options = {}) => {
   const response = await fetch(`${API_URL}${endpoint}`, {
     ...options,
@@ -9,9 +17,17 @@ export const api = async (endpoint, options = {}) => {
     },
   });
 
-  if (!response.ok) {
-    throw new Error(`API error: ${response.status}`);
+  let data;
+
+  try {
+    data = await response.json();
+  } catch {
+    // Response had no JSON body.
   }
 
-  return response.json();
+  if (!response.ok) {
+    throw new ApiError(response.status, data);
+  }
+
+  return data;
 };

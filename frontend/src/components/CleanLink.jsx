@@ -9,8 +9,9 @@ import {
 } from 'lucide-react';
 
 import { createShortUrl } from '../api/url.api';
+import { incrementTotalLinks } from '../api/stats.api';
 
-const COOLDOWN_MS = 3000;
+const COOLDOWN_MS = 2000;
 
 function UrlCleaner() {
   const [input, setInput] = useState('');
@@ -48,15 +49,14 @@ function UrlCleaner() {
     try {
       const response = await createShortUrl(url);
 
+      if (response) incrementTotalLinks();
       setResult(response.data.shortUrl);
     } catch (error) {
       console.error('Failed to shorten URL:', error);
 
       setError(true);
       setErrorMessage(
-        error?.response?.data?.message ||
-          error?.message ||
-          'Unable to shorten this URL.',
+        error?.data?.message || error?.message || 'Unable to shorten this URL.',
       );
     } finally {
       setLoading(false);
@@ -108,8 +108,6 @@ function UrlCleaner() {
     setError(false);
     setErrorMessage('');
     setCopied(false);
-
-    triggerCooldown();
   }
 
   async function handleCopy() {
@@ -129,6 +127,7 @@ function UrlCleaner() {
   }
 
   const disabled = loading || cooldown;
+  const clearDisabled = loading;
 
   return (
     <div
@@ -221,27 +220,29 @@ function UrlCleaner() {
                     color: copied
                       ? 'var(--color-clean)'
                       : 'var(--color-ink-soft)',
+                    backgroundColor: 'var(--color-bg)',
                   }}
                 >
                   {copied ? (
                     <Check className="h-4 w-4" />
                   ) : (
-                    <Copy className="h-4 w-4" />
+                    <Copy className="h-4 w-4 hover:text-black" />
                   )}
                 </button>
 
                 <button
                   type="button"
                   onClick={handleClear}
-                  disabled={disabled}
+                  disabled={clearDisabled}
                   aria-label="Clear URL"
                   className="flex h-8 w-8 items-center justify-center rounded-md disabled:cursor-not-allowed"
                   style={{
                     color: 'var(--color-ink-soft)',
-                    opacity: disabled ? 0.4 : 1,
+                    backgroundColor: 'var(--color-bg)',
+                    opacity: clearDisabled ? 0.4 : 1,
                   }}
                 >
-                  <X className="h-4 w-4" />
+                  <X className="h-4 w-4 hover:text-black" />
                 </button>
               </div>
             ) : (

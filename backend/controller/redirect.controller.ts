@@ -1,5 +1,7 @@
 import type { Request, Response } from "express";
 import { Link } from "../models/link.models.js";
+import { decryptUrl } from "../service/encryption.service.js";
+import { logError } from "../service/logger.js";
 
 export const redirectToOriginalUrl = async (
   req: Request<{ code: string }>,
@@ -10,9 +12,6 @@ export const redirectToOriginalUrl = async (
 
     const link = await Link.findOne({
       code: code,
-      // expiresAt: {
-      //   $gt: new Date(),
-      // },
     });
 
     if (!link) {
@@ -22,7 +21,23 @@ export const redirectToOriginalUrl = async (
       });
     }
 
-    return res.redirect(302, link.originalUrl);
+    let originalUrl: string;
+
+    try {
+      originalUrl = decryptUrl(link.originalUrl);
+    } catch (error) {
+      logError("REDIRECT DECRYPT ERROR", error, {
+        operation: "redirectToOriginalUrl",
+        code,
+      });
+
+      return res.status(500).json({
+        success: false,
+        message: "Unable to resolve destination",
+      });
+    }
+
+    return res.redirect(302, originalUrl);
   } catch (error) {
     console.error("URL redirect error:", error);
 
