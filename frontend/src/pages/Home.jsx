@@ -17,23 +17,6 @@ export default function Home() {
             <div className="flex flex-wrap items-center gap-2">
               <ServerStatus />
               <LinkCounter />
-              <a
-                href="https://github.com/Harshsanket/Lynky"
-                target="_blank"
-                rel="noreferrer"
-              >
-                <span
-                  className="flex w-fit items-center gap-2 rounded-full border px-3 py-1 text-xs"
-                  style={{
-                    borderColor: 'var(--color-border)',
-                    color: 'var(--color-ink-soft)',
-                    fontFamily: 'var(--font-mono)',
-                  }}
-                >
-                  beta
-                  <CircleArrowOutUpRight className="h-2.5 w-2.5" />
-                </span>
-              </a>
             </div>
             <h1
               className="text-4xl leading-[1.1] sm:text-5xl"
@@ -78,7 +61,7 @@ export default function Home() {
             <Feature
               mark="03 / forget"
               title="No cookies, no logs"
-              body="Lynky doesn't watch what you click. It cleans the link and gets out of the way."
+              body="Lynky doesn't watch what you click. It cleans the link, automatically deletes it after 3 days, and gets out of the way."
             />
           </div>
         </main>

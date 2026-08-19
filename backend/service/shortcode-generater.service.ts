@@ -2,6 +2,26 @@ import crypto from "node:crypto";
 
 const BASE62 = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
+export const getCodeLength = (): number => {
+  const min = Number(process.env.MIN_CODE_LENGTH) || 4;
+  const max = Number(process.env.MAX_CODE_LENGTH) || 6;
+
+  if (
+    !Number.isFinite(min) ||
+    !Number.isFinite(max) ||
+    min < 1 ||
+    max < min
+  ) {
+    throw new Error(
+      "MIN_CODE_LENGTH / MAX_CODE_LENGTH are not configured correctly"
+    );
+  }
+
+  const range = max - min + 1;
+
+  return min + Math.floor(Math.random() * range);
+};
+
 export const generateCode = (
   urlHash: string,
   attempt: number,

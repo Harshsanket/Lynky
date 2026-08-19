@@ -64,7 +64,6 @@ export const externalShortenController = async (
     });
   }
 };
-
 export const readApiKeyUsage = async (
   req: Request,
   res: Response

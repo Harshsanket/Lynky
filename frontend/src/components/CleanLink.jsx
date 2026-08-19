@@ -9,7 +9,6 @@ import {
 } from 'lucide-react';
 
 import { createShortUrl } from '../api/url.api';
-import { incrementTotalLinks } from '../api/stats.api';
 
 const COOLDOWN_MS = 2000;
 
@@ -49,7 +48,6 @@ function UrlCleaner() {
     try {
       const response = await createShortUrl(url);
 
-      if (response) incrementTotalLinks();
       setResult(response.data.shortUrl);
     } catch (error) {
       console.error('Failed to shorten URL:', error);

@@ -1,5 +1,7 @@
 import type { Request, Response } from "express";
 import { createShortUrl } from "../service/url.service.js";
+import { incrementTotalLinks } from "../service/stats.service.js";
+import { logError } from "../service/logger.js";
 
 export const createShortUrlController = async (
   req: Request,
@@ -16,6 +18,15 @@ export const createShortUrlController = async (
     }
 
     const result = await createShortUrl(url);
+
+    try {
+      await incrementTotalLinks();
+    } catch (error) {
+      logError("STATS INCREMENT ERROR", error, {
+        operation: "incrementTotalLinks",
+        source: "createShortUrlController",
+      });
+    }
 
     return res.status(201).json({
       success: true,

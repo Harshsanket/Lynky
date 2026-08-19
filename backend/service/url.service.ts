@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { Link } from '../models/link.models.js';
-import { generateCode } from './shortcode-generater.service.js';
+import { generateCode, getCodeLength } from './shortcode-generater.service.js';
 import { hashUrl } from './url-hasher.service.js';
 import { getPublicUrl } from './url-public-generator.service.js';
 import { cleanUrl } from './url-cleaner.service.js';
@@ -89,7 +89,7 @@ export const createShortUrl = async (inputUrl: string) => {
       const code = generateCode(
         urlHash,
         attempt,
-        Number(process.env.CODE_LENGTH),
+        getCodeLength(),
       );
 
       try {
