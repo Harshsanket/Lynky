@@ -60,6 +60,7 @@ const MOTION_STYLES = `
 /* -------------------------------------------------------------------------- */
 
 function Section({
+  id,
   mark,
   eyebrow,
   title,
@@ -67,8 +68,10 @@ function Section({
 }) {
   return (
     <section
+      id={id}
       className="
         grid grid-cols-1
+        scroll-mt-24
         border-t py-14
         sm:grid-cols-[118px_minmax(0,1fr)]
         sm:gap-10 sm:py-16
@@ -216,9 +219,7 @@ function TrailPoint({
   children,
 }) {
   return (
-    <div
-      className="bg-(--color-bg-alt) p-5 sm:p-6"
-    >
+    <div className="bg-(--color-bg-alt) p-5 sm:p-6">
       <span
         className="text-[10px]"
         style={{
@@ -506,7 +507,6 @@ function toneColor(tone) {
 
 function UrlTeardownFigure() {
   const [active, setActive] = React.useState(2);
-
   const part = URL_PARTS[active];
 
   return (
@@ -594,44 +594,6 @@ function UrlTeardownFigure() {
             {part.note}
           </p>
         </div>
-      </div>
-
-      <div
-        className="grid grid-cols-5 border-t"
-        style={{
-          borderColor: 'var(--color-border)',
-        }}
-      >
-        {URL_PARTS.map((item, index) => {
-          const selected = index === active;
-
-          return (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => setActive(index)}
-              className="border-r px-2 py-3 last:border-r-0"
-              style={{
-                borderColor: 'var(--color-border)',
-                backgroundColor: selected
-                  ? 'color-mix(in srgb, var(--color-ink) 4%, transparent)'
-                  : 'transparent',
-              }}
-            >
-              <span
-                className="text-[9px]"
-                style={{
-                  ...mono,
-                  color: selected
-                    ? toneColor(item.tone)
-                    : 'var(--color-ink-soft)',
-                }}
-              >
-                {item.id}
-              </span>
-            </button>
-          );
-        })}
       </div>
     </FigureFrame>
   );
@@ -920,6 +882,198 @@ function PipelineFigure() {
 }
 
 /* -------------------------------------------------------------------------- */
+/*                              IOS SHORTCUT                                  */
+/* -------------------------------------------------------------------------- */
+
+const SHORTCUT_STEPS = [
+  {
+    n: '01',
+    title: 'Add the Shortcut',
+    text: (
+      <>
+        Tap{' '}
+        <a
+          href={import.meta.env.VITE_IOS_SHORTCUT}
+          target="_blank"
+          rel="noreferrer"
+          className="underline underline-offset-4 transition-opacity hover:opacity-60"
+          style={{ color: 'var(--color-clean)' }}
+        >
+          get shortcut
+        </a>{' '}
+        on your iPhone and add it to Shortcuts.
+      </>
+    ),
+  },
+  {
+    n: '02',
+    title: 'Tap Edit',
+    text: (
+      <>
+        Open the Shortcut and tap{' '}
+        <b style={{ color: 'var(--color-ink)' }}>Edit</b>.
+      </>
+    ),
+  },
+  {
+    n: '03',
+    title: 'Expand the request',
+    text: (
+      <>
+        Find the{' '}
+        <b style={{ color: 'var(--color-ink)' }}>
+          Get Contents of URL
+        </b>{' '}
+        action and tap the{' '}
+        <b style={{ color: 'var(--color-ink)' }}>›</b> button to expand it.
+      </>
+    ),
+  },
+  {
+    n: '04',
+    title: 'Enter your API key',
+    text: (
+      <>
+        Find the{' '}
+        <b style={{ color: 'var(--color-ink)' }}>Authorization</b>{' '}
+        section and enter your Lynky API key. That is the only value you
+        need to change.
+      </>
+    ),
+  },
+  {
+    n: '05',
+    title: 'Allow link access',
+    text: (
+      <>
+        The first time you run the Shortcut, iOS will ask for permission to
+        access the link. Tap{' '}
+        <b style={{ color: 'var(--color-ink)' }}>Always Allow</b>{' '}
+        so it can run without asking every time, or choose{' '}
+        <b style={{ color: 'var(--color-ink)' }}>Allow Once</b>{' '}
+        if you prefer to approve it each time.
+      </>
+    ),
+  },
+  {
+    n: '06',
+    title: 'That’s it',
+    text: (
+      <>
+        The Shortcut is ready. Run it whenever you want Lynky to clean and
+        shorten a link.
+      </>
+    ),
+  },
+];
+function ShortcutSetup() {
+  return (
+    <div
+      className="border"
+      style={{
+        borderColor: 'var(--color-border)',
+        backgroundColor: 'var(--color-bg-alt)',
+      }}
+    >
+      <div
+        className="flex flex-col gap-5 border-b px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6"
+        style={{
+          borderColor: 'var(--color-border)',
+        }}
+      >
+        <div>
+          <span
+            className="text-[9px] uppercase tracking-[0.18em]"
+            style={{
+              ...mono,
+              color: 'var(--color-clean)',
+            }}
+          >
+            ios 27+
+          </span>
+
+          <p
+            className="mt-2 text-sm"
+            style={{
+              ...body,
+              color: 'var(--color-ink)',
+              fontWeight: 600,
+            }}
+          >
+            Start with the ready-made Lynky Shortcut.
+          </p>
+        </div>
+
+        <a
+          href={import.meta.env.VITE_IOS_SHORTCUT}
+          target="_blank"
+          rel="noreferrer"
+          className="
+            w-fit shrink-0 border px-4 py-2.5
+            text-xs transition-opacity hover:opacity-60
+          "
+          style={{
+            ...mono,
+            borderColor: 'var(--color-clean)',
+            color: 'var(--color-clean)',
+          }}
+        >
+          get shortcut ↗
+        </a>
+      </div>
+
+      {SHORTCUT_STEPS.map((step) => (
+        <div
+          key={step.n}
+          className="
+            grid border-t px-5 py-5
+            first:border-t-0
+            sm:grid-cols-[48px_170px_1fr]
+            sm:gap-5 sm:px-6
+          "
+          style={{
+            borderColor: 'var(--color-border)',
+          }}
+        >
+          <span
+            className="text-[10px]"
+            style={{
+              ...mono,
+              color: 'var(--color-clean)',
+            }}
+          >
+            {step.n}
+          </span>
+
+          <p
+            className="mt-2 text-sm sm:mt-0"
+            style={{
+              ...body,
+              color: 'var(--color-ink)',
+              fontWeight: 600,
+            }}
+          >
+            {step.title}
+          </p>
+
+          <p
+            className="mt-2 text-sm leading-relaxed sm:mt-0"
+            style={{
+              ...body,
+              color: 'var(--color-ink-soft)',
+            }}
+          >
+            {step.text}
+          </p>
+        </div>
+      ))}
+      
+    </div>
+    
+  );
+}
+
+/* -------------------------------------------------------------------------- */
 /*                                  LIMITS                                    */
 /* -------------------------------------------------------------------------- */
 
@@ -1095,34 +1249,22 @@ const Blog = () => {
             backgroundColor: 'var(--color-border)',
           }}
         >
-          <TrailPoint
-            number="01"
-            title="Added by marketers"
-          >
+          <TrailPoint number="01" title="Added by marketers">
             UTM parameters describe campaigns, sources and mediums so
             analytics systems can attribute a visit.
           </TrailPoint>
 
-          <TrailPoint
-            number="02"
-            title="Added by ad platforms"
-          >
+          <TrailPoint number="02" title="Added by ad platforms">
             Identifiers such as gclid and fbclid can connect the visit back
             to the advertisement that produced it.
           </TrailPoint>
 
-          <TrailPoint
-            number="03"
-            title="Added by the site"
-          >
+          <TrailPoint number="03" title="Added by the site">
             Shops and search engines often append query, ranking,
             recommendation and interface state of their own.
           </TrailPoint>
 
-          <TrailPoint
-            number="04"
-            title="Added between sites"
-          >
+          <TrailPoint number="04" title="Added between sites">
             Redirect services can introduce another HTTP request before you
             ever reach the final destination.
           </TrailPoint>
@@ -1131,8 +1273,8 @@ const Blog = () => {
         <RedirectChainDiagram />
 
         <p>
-          Some of this information lives directly in the URL. Some does
-          not. That distinction matters: Lynky can clean the address without
+          Some of this information lives directly in the URL. Some does not.
+          That distinction matters: Lynky can clean the address without
           pretending it controls what a destination does after you arrive.
         </p>
       </Section>
@@ -1175,7 +1317,7 @@ const Blog = () => {
           Advertising platforms can append their own click identifiers,
           such as <code style={mono}>gclid</code> or{' '}
           <code style={mono}>fbclid</code>. Those values travel with the URL
-          rather than inside the browser's cookie jar.
+          rather than inside the browser&apos;s cookie jar.
         </p>
 
         <p>
@@ -1378,7 +1520,168 @@ const Blog = () => {
 
       {/* 06 */}
       <Section
-        mark="06 / boundary"
+        id="ios-shortcut"
+        mark="06 / shortcut"
+        eyebrow="clean links straight from your iphone"
+        title="Set up Lynky as an iPhone Shortcut."
+      >
+        <p>
+          On <b style={{ color: 'var(--color-ink)' }}>iOS 27 and later</b>,
+          Lynky can run directly through Apple Shortcuts. Once it is set up,
+          you can send a link through the Shortcut and get the cleaned result
+          without opening Lynky first.
+        </p>
+
+        <ShortcutSetup />
+
+        <div
+          className="border-l-2 py-1 pl-5"
+          style={{
+            borderColor: 'var(--color-dirty)',
+          }}
+        >
+          <p
+            className="text-sm leading-relaxed"
+            style={{
+              ...body,
+              color: 'var(--color-ink)',
+            }}
+          >
+            <b>Do not rearrange any of the actions.</b> The Shortcut is
+            already wired correctly. You only need to enter your API key.
+          </p>
+        </div>
+
+        <div
+          className="grid border sm:grid-cols-2"
+          style={{
+            borderColor: 'var(--color-border)',
+            backgroundColor: 'var(--color-bg-alt)',
+          }}
+        >
+          <div
+            className="border-b p-5 sm:border-b-0 sm:border-r sm:p-6"
+            style={{
+              borderColor: 'var(--color-border)',
+            }}
+          >
+            <span
+              className="text-[9px] uppercase tracking-[0.18em]"
+              style={{
+                ...mono,
+                color: 'var(--color-clean)',
+              }}
+            >
+              notifications
+            </span>
+
+            <h3
+              className="mt-3 text-base"
+              style={{
+                ...display,
+                color: 'var(--color-ink)',
+                fontWeight: 500,
+              }}
+            >
+              You will know when it is done.
+            </h3>
+
+            <p
+              className="mt-3 text-sm leading-relaxed"
+              style={{
+                ...body,
+                color: 'var(--color-ink-soft)',
+              }}
+            >
+              By default, the Shortcut shows a notification and plays a
+              sound whenever Lynky finishes copying the result.
+            </p>
+          </div>
+
+          <div className="p-5 sm:p-6">
+            <span
+              className="text-[9px] uppercase tracking-[0.18em]"
+              style={{
+                ...mono,
+                color: 'var(--color-dirty)',
+              }}
+            >
+              prefer silence?
+            </span>
+
+            <h3
+              className="mt-3 text-base"
+              style={{
+                ...display,
+                color: 'var(--color-ink)',
+                fontWeight: 500,
+              }}
+            >
+              Remove only the notification action.
+            </h3>
+
+            <p
+              className="mt-3 text-sm leading-relaxed"
+              style={{
+                ...body,
+                color: 'var(--color-ink-soft)',
+              }}
+            >
+              Find the{' '}
+              <b style={{ color: 'var(--color-ink)' }}>
+                Show Notification
+              </b>{' '}
+              action and remove it using the{' '}
+              <b style={{ color: 'var(--color-ink)' }}>×</b> button. Leave
+              every other action exactly where it is.
+            </p>
+          </div>
+        </div>
+
+        <div
+  className="border p-5 sm:p-6"
+  style={{
+    borderColor: 'var(--color-border)',
+    backgroundColor: 'var(--color-bg-alt)',
+  }}
+>
+  <span
+    className="text-[9px] uppercase tracking-[0.18em]"
+    style={{
+      ...mono,
+      color: 'var(--color-ink-soft)',
+    }}
+  >
+    need help?
+  </span>
+
+  <p
+    className="mt-3 text-sm leading-relaxed"
+    style={{
+      ...body,
+      color: 'var(--color-ink)',
+    }}
+  >
+    If you need help setting up the Shortcut or need an API key, contact me at{' '}
+    <a
+      href="mailto:harshsanket.dev@gmail.com"
+      className="underline underline-offset-4 transition-opacity hover:opacity-60"
+      style={{
+        ...mono,
+        color: 'var(--color-clean)',
+      }}
+    >
+      harshsanket.dev@gmail.com
+    </a>
+    .
+  </p>
+</div>
+
+      </Section>
+
+      {/* 07 */}
+      <Section
+        mark="07 / boundary"
         eyebrow="what cleaning cannot promise"
         title="A cleaner link is not an anonymous browser."
       >

@@ -2,7 +2,8 @@ import ServerStatus from '../components/ServerStatus';
 import UrlCleaner from '../components/CleanLink';
 import Feature from '../components/Feature';
 import LinkCounter from '../components/LinkCounter';
-import { CircleArrowOutUpRight, MoveUpRight } from 'lucide-react';
+import { CircleArrowOutUpRight, CircleArrowOutUpRightIcon, MoveUpRight, MoveUpRightIcon } from 'lucide-react';
+import { Link } from 'react-router';
 
 export default function Home() {
   return (
@@ -17,6 +18,19 @@ export default function Home() {
             <div className="flex flex-wrap items-center gap-2">
               <ServerStatus />
               <LinkCounter />
+              <Link to="/blog#ios-shortcut">
+                <span
+                  className="flex w-fit items-center gap-2 rounded-full border px-3 py-1 text-xs"
+                  style={{
+                    borderColor: 'var(--color-border)',
+                    color: 'var(--color-ink-soft)',
+                    fontFamily: 'var(--font-mono)',
+                  }}
+                >
+                  iPhone Shortcut
+                  <CircleArrowOutUpRightIcon className='h-3 w-3'/>
+                </span>
+              </Link>
             </div>
             <h1
               className="text-4xl leading-[1.1] sm:text-5xl"
