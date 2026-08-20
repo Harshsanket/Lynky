@@ -1,21 +1,14 @@
 import crypto from "node:crypto";
+import { env } from "../src/config/env.js";
 
 const BASE62 = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
+/**
+ * Random code length within the configured [MIN, MAX] range.
+ */
 export const getCodeLength = (): number => {
-  const min = Number(process.env.MIN_CODE_LENGTH) || 4;
-  const max = Number(process.env.MAX_CODE_LENGTH) || 6;
-
-  if (
-    !Number.isFinite(min) ||
-    !Number.isFinite(max) ||
-    min < 1 ||
-    max < min
-  ) {
-    throw new Error(
-      "MIN_CODE_LENGTH / MAX_CODE_LENGTH are not configured correctly"
-    );
-  }
+  const min = env.MIN_CODE_LENGTH;
+  const max = env.MAX_CODE_LENGTH;
 
   const range = max - min + 1;
 
@@ -25,7 +18,7 @@ export const getCodeLength = (): number => {
 export const generateCode = (
   urlHash: string,
   attempt: number,
-  CODE_LENGTH: number
+  codeLength: number
 ): string => {
   const digest = crypto
     .createHash("sha256")
@@ -36,7 +29,7 @@ export const generateCode = (
 
   let code = "";
 
-  for (let i = 0; i < CODE_LENGTH; i++) {
+  for (let i = 0; i < codeLength; i++) {
     code += BASE62[number % BASE62.length];
 
     number = Math.floor(

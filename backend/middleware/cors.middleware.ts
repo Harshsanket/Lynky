@@ -1,12 +1,11 @@
 import cors from "cors";
+import { env } from "../src/config/env.js";
 
-
-const isProduction = process.env.NODE_ENV === "PRODUCTION";
-
-const allowedOrigins = isProduction
-  ? [process.env.FRONTEND_URL].filter(Boolean)
-  : ["http://localhost:5173"];
-
+/**
+ * CORS policy: production only allows the configured frontend origin;
+ * development allows the local Vite dev server. Requests without an Origin
+ * header (curl, Postman, server-to-server) are always allowed.
+ */
 export const corsMiddleware = cors({
   origin: (origin, callback) => {
     // Allow requests without an Origin header
@@ -15,7 +14,7 @@ export const corsMiddleware = cors({
       return callback(null, true);
     }
 
-    if (allowedOrigins.includes(origin)) {
+    if (env.ALLOWED_ORIGINS.includes(origin)) {
       return callback(null, true);
     }
 

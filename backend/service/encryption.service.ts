@@ -1,13 +1,13 @@
 import crypto from "node:crypto";
+import { env } from "../src/config/env.js";
 
+/**
+ * Derive the AES-256-GCM and HMAC-SHA-256 keys from the single configured
+ * secret. A different derived key is used for each purpose so a leaked
+ * ciphertext can never be used to forge an HMAC and vice-versa.
+ */
 const getKeys = () => {
-  const secret = process.env.ENCRYPTION_KEY;
-
-  if (!secret) {
-    throw new Error(
-      "ENCRYPTION_KEY is not configured"
-    );
-  }
+  const secret = env.ENCRYPTION_KEY;
 
   const aesKey = crypto
     .createHash("sha256")

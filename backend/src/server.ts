@@ -1,14 +1,16 @@
 import "dotenv/config";
 import app from "./app.js";
 import { connectDatabase } from "../database/index.database.js";
+import { env } from "./config/env.js";
 
-const PORT = process.env.PORT || 5001;
-
+/**
+ * Bootstrap: connect to MongoDB, then start the HTTP server.
+ */
 const startServer = async () => {
   await connectDatabase();
 
-  app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+  app.listen(env.PORT, () => {
+    console.log(`Server running on http://localhost:${env.PORT}`);
   });
 };
 

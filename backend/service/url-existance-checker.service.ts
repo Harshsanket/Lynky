@@ -1,6 +1,12 @@
 import { Link } from "../models/link.models.js";
 import { logError } from "./logger.js";
 
+/**
+ * Find an existing, un-expired link for a cleaned-URL hash.
+ *
+ * Used to return the same short code (with a refreshed expiry) when the same
+ * destination is shortened again, instead of creating a duplicate record.
+ */
 export const findExistingUrl = async (
   urlHash: string
 ) => {

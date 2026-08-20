@@ -4,12 +4,14 @@ import { apiKeyAuthMiddleware, apiKeyAuthOnlyMiddleware } from "../middleware/ap
 
 const router = Router();
 
+// Authenticated shorten endpoint (quota enforced before creating the link).
 router.post(
   "/urls",
   apiKeyAuthMiddleware,
   externalShortenController
 );
 
+// Read-only usage endpoint (auth only, no quota consumed).
 router.get(
   "/stats/usage",
   apiKeyAuthOnlyMiddleware,

@@ -1,13 +1,10 @@
+import { env } from "../src/config/env.js";
+
+/**
+ * Build the public short URL for a code, e.g. `https://host/{code}`.
+ */
 export const getPublicUrl = (
   code: string
 ): string => {
-  const publicUrl = process.env.PUBLIC_URL;
-
-  if (!publicUrl) {
-    throw new Error(
-      "PUBLIC_URL is not configured"
-    );
-  }
-
-  return `${publicUrl.replace(/\/$/, "")}/${code}`;
+  return `${env.PUBLIC_URL.replace(/\/$/, "")}/${code}`;
 };

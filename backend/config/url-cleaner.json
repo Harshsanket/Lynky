@@ -1,0 +1,49 @@
+{
+  "maxDepth": 3,
+  "enableGenericRedirectUnwrap": true,
+  "genericUnwrapParameters": [
+    "url",
+    "u",
+    "redirect",
+    "redirect_url",
+    "redirect_uri",
+    "redirect_to",
+    "redirecturl",
+    "destination",
+    "dest",
+    "target",
+    "next",
+    "continue",
+    "return_url",
+    "return_to",
+    "rurl",
+    "ru",
+    "go",
+    "out",
+    "jmp",
+    "link",
+    "ref_url",
+    "original_url",
+    "_url",
+    "href",
+    "uri",
+    "loc"
+  ],
+  "removeJunkFragments": true,
+  "allowlistedParameters": {
+    "global": [],
+    "domains": {
+      "youtube.com": ["v", "list", "t", "index"],
+      "youtu.be": ["v", "list", "t", "index"],
+      "amazon.com": ["tag"],
+      "amazon.co.uk": ["tag"],
+      "amazon.de": ["tag"],
+      "amazon.ca": ["tag"],
+      "amazon.co.jp": ["tag"],
+      "amazon.in": ["tag"],
+      "amazon.fr": ["tag"],
+      "amazon.it": ["tag"],
+      "amazon.es": ["tag"]
+    }
+  }
+}

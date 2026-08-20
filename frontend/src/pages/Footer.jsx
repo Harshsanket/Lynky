@@ -1,3 +1,4 @@
+/** Footer — attribution + copyright year. */
 const Footer = () => {
   return (
     <footer

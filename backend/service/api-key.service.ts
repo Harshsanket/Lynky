@@ -1,15 +1,25 @@
 import crypto from "node:crypto";
 import mongoose from "mongoose";
+import { env } from "../src/config/env.js";
+import { PublicError } from "./public-error.service.js";
 import {
   ApiKey,
   getUsageMonth,
   MAX_USAGE_HISTORY_MONTHS,
 } from "../models/api-key.models.js";
 
-export const MONTHLY_LINK_LIMIT =
-  Number(process.env.API_KEY_MONTHLY_LIMIT) || 10000;
+/**
+ * API-key lifecycle + usage accounting.
+ *
+ * Secrets are never stored — only sha256 hashes. Usage rolls over at each
+ * month boundary (`usageMonth`), and `incrementApiKeyUsage` is a single
+ * atomic update so the 10k/month quota cannot be bypassed under concurrency.
+ */
 
-export class ApiKeyError extends Error {
+/** Monthly link quota per API key (configurable via env). */
+export const MONTHLY_LINK_LIMIT = env.API_KEY_MONTHLY_LIMIT;
+
+export class ApiKeyError extends PublicError {
   statusCode: number;
 
   constructor(message: string, statusCode: number) {
@@ -28,8 +38,26 @@ export const hashApiSecret = (
     .digest("hex");
 };
 
+const API_SECRET_ALPHABET =
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
+/**
+ * Generate a random API secret of exactly `env.API_KEY_LENGTH` characters
+ * drawn from the base64url alphabet.
+ *
+ * 256 % 64 === 0, so mapping each random byte modulo 64 is unbiased.
+ */
 export const generateApiSecret = (): string => {
-  return crypto.randomBytes(32).toString("base64url");
+  const length = env.API_KEY_LENGTH;
+  const bytes = crypto.randomBytes(length);
+
+  let secret = "";
+
+  for (let i = 0; i < length; i++) {
+    secret += API_SECRET_ALPHABET[bytes[i]! % 64]!;
+  }
+
+  return secret;
 };
 
 export const provisionApiKeys = async (
@@ -103,7 +131,7 @@ export const findAndRolloverApiKey = async (
 
   if (key.status !== "active") {
     throw new ApiKeyError(
-      "This API key is disabled. Contact Harsh to re-enable it.",
+      "This API key is disabled. Contact the owner to re-enable it.",
       403
     );
   }
@@ -146,7 +174,7 @@ export const validateAndPrepareApiKey = async (
 
   if (key.monthlyUsageCount >= MONTHLY_LINK_LIMIT) {
     throw new ApiKeyError(
-      "Monthly quota of 10,000 links exceeded. Try again next month.",
+      `Monthly quota of ${MONTHLY_LINK_LIMIT.toLocaleString()} links exceeded. Try again next month.`,
       429
     );
   }

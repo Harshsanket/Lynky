@@ -1,5 +1,9 @@
 import mongoose, { Schema, Document } from "mongoose";
 
+/**
+ * Single-document global counter (document key is always `"global"`).
+ * Used for the "N links cleaned & shortened" stat on the frontend.
+ */
 export interface IStats extends Document {
   key: string;
   totalLinks: number;

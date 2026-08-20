@@ -1,3 +1,4 @@
+/** 404 page — shown for any unmatched route. */
 export default function NotFound() {
   return (
     <div className="flex  flex-col bg-bg font-body text-ink">
@@ -36,21 +37,14 @@ export default function NotFound() {
           }}
         />
 
-        <span
-          className="h-2.5 w-2.5 rounded-full"
-          style={{
-            backgroundColor: "var(--color-clean)",
-            opacity: 0.5,
-          }}
-        />
+<span
+                className="h-2.5 w-2.5 rounded-full"
+                style={{
+                  backgroundColor: "var(--color-clean)",
+                  opacity: 0.5,
+                }}
+              />
 
-        <span
-          className=" text-xs "
-          style={{
-            fontFamily: "var(--font-mono)",
-            color: "var(--color-ink-soft)",
-          }}
-        />
               <span className="font-mono text-xs tracking-wide text-ink-soft">
                 what you asked for
               </span>

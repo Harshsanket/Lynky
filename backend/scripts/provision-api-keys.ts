@@ -3,6 +3,12 @@ import mongoose from "mongoose";
 import { connectDatabase } from "../database/index.database.js";
 import { provisionApiKeys } from "../service/api-key.service.js";
 
+/**
+ * CLI script: `npm run provision:keys -- <count>` (default 10).
+ *
+ * Creates API keys and prints the raw secrets exactly once. Only the sha256
+ * hashes are stored; the secrets cannot be recovered afterwards.
+ */
 const count = Math.max(
   1,
   Number(process.argv[2]) || 10

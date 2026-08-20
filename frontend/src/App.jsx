@@ -8,6 +8,9 @@ import  API_Usage  from "./pages/API_Usage";
 import About from "./pages/About";
 import Blog from "./pages/Blog";
 
+/**
+ * App — route table. All pages render inside `Layout` (header/footer shell).
+ */
 function App() {
   return (
     <BrowserRouter>

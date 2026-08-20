@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
 import { checkBackendHealth } from "../api/ping.api";
 
+/**
+ * ServerStatus — pill showing backend connectivity. Pings `/ping` every
+ * second for up to 2 minutes (so a cold start isn't flagged as offline).
+ */
 const ServerStatus = () => {
   const [status, setStatus] = useState("connecting");
 

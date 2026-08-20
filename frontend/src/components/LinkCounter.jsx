@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
 import { getTotalLinks } from "../api/stats.api";
 
+/**
+ * LinkCounter — pill showing the global "links cleaned & shortened" count.
+ * Renders nothing while loading or when the backend is unreachable.
+ */
 const LinkCounter = () => {
   const [total, setTotal] = useState(null);
 

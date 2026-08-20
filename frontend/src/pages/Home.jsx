@@ -2,9 +2,12 @@ import ServerStatus from '../components/ServerStatus';
 import UrlCleaner from '../components/CleanLink';
 import Feature from '../components/Feature';
 import LinkCounter from '../components/LinkCounter';
-import { CircleArrowOutUpRight, CircleArrowOutUpRightIcon, MoveUpRight, MoveUpRightIcon } from 'lucide-react';
+import { CircleArrowOutUpRightIcon } from 'lucide-react';
 import { Link } from 'react-router';
 
+/**
+ * Home — hero + interactive URL cleaner + feature blurbs.
+ */
 export default function Home() {
   return (
     <div className=" w-full" style={{ backgroundColor: 'var(--color-bg)' }}>

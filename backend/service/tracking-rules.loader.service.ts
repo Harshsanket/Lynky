@@ -2,6 +2,17 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+/**
+ * Loads and compiles the tracking-removal rules from `config/` JSON files at
+ * startup:
+ *
+ *  - `tracking-rules.json`   → global parameters / prefixes / patterns.
+ *  - `clearurls-data.json`   → provider-specific ClearURLs rules.
+ *
+ * Rules are compiled to `RegExp`/`Set` once so request-time cleaning is fast
+ * and never touches the filesystem.
+ */
+
 interface ClearURLsRule {
   urlPattern: string;
   completeProvider?: boolean;

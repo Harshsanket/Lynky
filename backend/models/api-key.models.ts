@@ -1,5 +1,9 @@
 import mongoose, { Schema, Document } from "mongoose";
 
+/**
+ * Current usage period key, e.g. `2026-08` (UTC). Used to detect month
+ * rollovers so counters reset automatically at the start of each month.
+ */
 export const getUsageMonth = (
   date: Date = new Date()
 ): string => {
@@ -12,6 +16,7 @@ export const getUsageMonth = (
   return `${year}-${month}`;
 };
 
+/** How many months of usage history are retained (rolling window). */
 export const MAX_USAGE_HISTORY_MONTHS = 12;
 
 export interface IUsageHistoryEntry {
@@ -19,6 +24,13 @@ export interface IUsageHistoryEntry {
   count: number;
 }
 
+/**
+ * An issued API key.
+ *
+ * The raw secret is never stored; only its sha256 hash (`keyHash`). Usage is
+ * tracked for the current month (`monthlyUsageCount` / `usageMonth`) plus a
+ * capped rolling `usageHistory` for reporting.
+ */
 export interface IApiKey extends Document {
   _id: mongoose.Types.ObjectId;
   keyHash: string;

@@ -1,16 +1,10 @@
-export const getExpirationDate = (): Date => {
-  const expirationDays = Number(
-    process.env.EXPIRATION_DAYS
-  );
+import { env } from "../src/config/env.js";
 
-  if (
-    !Number.isFinite(expirationDays) ||
-    expirationDays <= 0
-  ) {
-    throw new Error(
-      "EXPIRATION_DAYS is not configured correctly"
-    );
-  }
+/**
+ * Expiration date for a new link, based on the configured lifetime in days.
+ */
+export const getExpirationDate = (): Date => {
+  const expirationDays = env.EXPIRATION_DAYS;
 
   return new Date(
     Date.now() +

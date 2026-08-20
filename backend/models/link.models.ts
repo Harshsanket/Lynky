@@ -1,5 +1,13 @@
 import mongoose, { Document, Schema } from "mongoose";
 
+/**
+ * A shortened link record.
+ *
+ * - `code` is the unique short identifier (`/code` redirects to destination).
+ * - `originalUrl` stores the AES-256-GCM encrypted, cleaned destination.
+ * - `urlHash` is a sha256 of the cleaned URL, used to dedupe identical links.
+ * - `expiresAt` carries a TTL index so MongoDB auto-deletes expired records.
+ */
 export interface ILink extends Document {
   code: string;
   originalUrl: string;

@@ -1,3 +1,7 @@
+/**
+ * Feature — small numbered feature blurb on the home page.
+ */
+
 function Feature({ mark, title, body }) {
   return (
     <div className="flex flex-col gap-2">

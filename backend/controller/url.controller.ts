@@ -8,17 +8,16 @@ import {
   incrementApiKeyUsage,
 } from "../service/api-key.service.js";
 import { logError } from "../service/logger.js";
+import { PublicError, getPublicErrorMessage } from "../service/public-error.service.js";
+import { extractBearerSecret } from "../src/utils/http.js";
+import { env } from "../src/config/env.js";
 
-const extractBearerSecret = (
-  req: Request
-): string | null => {
-  const header = req.headers.authorization;
-
-  return header?.startsWith("Bearer ")
-    ? header.slice(7).trim()
-    : null;
-};
-
+/**
+ * Create a shortened URL.
+ *
+ * Public endpoint (frontend home page). Optionally authenticates with a
+ * bearer API secret to count the request against the key's monthly quota.
+ */
 export const createShortUrlController = async (
   req: Request,
   res: Response
@@ -43,19 +42,20 @@ export const createShortUrlController = async (
       apiKeyId = key._id;
     }
 
-    const result = await createShortUrl(url);
-
+    // Reserve the quota slot *before* creating the link so an over-quota key
+    // can never sneak a record into the database.
     if (apiKeyId) {
       const incremented = await incrementApiKeyUsage(apiKeyId);
 
       if (!incremented) {
         return res.status(429).json({
           success: false,
-          message:
-            "Monthly quota of 10,000 links exceeded. Try again next month.",
+          message: `Monthly quota of ${env.API_KEY_MONTHLY_LIMIT.toLocaleString()} links exceeded. Try again next month.`,
         });
       }
     }
+
+    const result = await createShortUrl(url);
 
     try {
       await incrementTotalLinks();
@@ -80,14 +80,20 @@ export const createShortUrlController = async (
       });
     }
 
-    console.error("Create short URL error:", error);
+    const isPublic = error instanceof PublicError;
 
-    return res.status(400).json({
+    if (!isPublic) {
+      logError("CREATE SHORT URL ERROR", error, {
+        operation: "createShortUrlController",
+      });
+    }
+
+    return res.status(isPublic ? 400 : 500).json({
       success: false,
-      message:
-        error instanceof Error
-          ? error.message
-          : "Unable to shorten URL",
+      message: getPublicErrorMessage(
+        error,
+        "Unable to shorten URL"
+      ),
     });
   }
 };

@@ -4,6 +4,11 @@ import {
   TRACKING_PATTERNS,
 } from "./tracking-rules.loader.service.js";
 
+/**
+ * Whether a query parameter key should be stripped as tracking noise.
+ * Checks exact names, shared prefixes, and regex patterns from the rules
+ * loaded at startup.
+ */
 export const isTrackingParameter = (
   key: string
 ): boolean => {

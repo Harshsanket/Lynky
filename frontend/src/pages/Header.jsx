@@ -6,6 +6,7 @@ const NAV_LINKS = [
   { to: "/about", label: "about" },
 ];
 
+/** Header — wordmark + primary navigation. */
 const Header = () => {
   return (
     <header

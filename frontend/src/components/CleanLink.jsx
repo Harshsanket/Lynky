@@ -12,6 +12,35 @@ import { createShortUrl } from '../api/url.api';
 
 const COOLDOWN_MS = 2000;
 
+const INVALID_URL_MESSAGE =
+  "That doesn't look like a valid URL — paste the full link, including https://";
+
+/**
+ * Whether the input is a non-empty HTTP(S) URL with a host. Everything else
+ * (plain text, javascript:, data:, etc.) is rejected before it reaches the API.
+ */
+const isValidUrl = (value) => {
+  if (!value || typeof value !== 'string') return false;
+
+  const trimmed = value.trim();
+
+  if (!trimmed || trimmed.includes('\\')) return false;
+
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * UrlCleaner — the home page's interactive cleaner.
+ *
+ * Type or paste a URL; on submit it calls the shorten API, shows the cleaned
+ * short link, and offers copy/clear actions. A cooldown prevents rapid
+ * repeat submissions (mirrors the backend's per-IP link rate limit).
+ */
 function UrlCleaner() {
   const [input, setInput] = useState('');
   const [result, setResult] = useState(null);
@@ -39,6 +68,12 @@ function UrlCleaner() {
     const url = value.trim();
 
     if (!url || loading || cooldown || result) return;
+
+    if (!isValidUrl(url)) {
+      setError(true);
+      setErrorMessage(INVALID_URL_MESSAGE);
+      return;
+    }
 
     setLoading(true);
     setError(false);
@@ -161,7 +196,7 @@ function UrlCleaner() {
       </div>
 
       <div className="px-4 py-6 sm:px-6 sm:py-8">
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} noValidate>
           <div
             className="flex min-h-11 w-full items-center gap-2 rounded-md border px-3"
             style={{
@@ -283,7 +318,7 @@ function UrlCleaner() {
             }}
           >
             {errorMessage ||
-              "That doesn't look like a valid URL — paste the full link, including https://"}
+              INVALID_URL_MESSAGE}
           </p>
         )}
       </div>

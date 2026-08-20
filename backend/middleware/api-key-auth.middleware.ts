@@ -5,95 +5,77 @@ import {
   findAndRolloverApiKey,
   validateAndPrepareApiKey,
 } from "../service/api-key.service.js";
+import { extractBearerSecret } from "../src/utils/http.js";
+import { logError } from "../service/logger.js";
 
 declare global {
   namespace Express {
     interface Request {
+      /** Resolved API key id, attached by `apiKeyAuth` middleware. */
       apiKey?: { id: mongoose.Types.ObjectId };
     }
   }
 }
 
-export const apiKeyAuthMiddleware = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
+/**
+ * Factory for API-key authentication middleware.
+ *
+ * `validateQuota` controls whether the monthly link quota is enforced on
+ * this request:
+ *  - `true`  → short-code creation endpoints (quota checked up front).
+ *  - `false` → read-only endpoints such as usage stats (no quota consumed).
+ *
+ * Both variants resolve the key, roll over the month counter if needed and
+ * attach `req.apiKey.id`, then reject invalid/disabled/missing keys.
+ */
+export const createApiKeyAuthMiddleware = (
+  validateQuota: boolean
 ) => {
-  try {
-    const authHeader = req.headers.authorization;
+  return async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ) => {
+    try {
+      const secret = extractBearerSecret(req);
 
-    const secret = authHeader?.startsWith("Bearer ")
-      ? authHeader.slice(7).trim()
-      : null;
+      if (!secret) {
+        return res.status(401).json({
+          success: false,
+          message:
+            "Missing API secret. Provide it in the Authorization header.",
+        });
+      }
 
-    if (!secret) {
-      return res.status(401).json({
+      const key = validateQuota
+        ? await validateAndPrepareApiKey(secret)
+        : await findAndRolloverApiKey(secret);
+
+      req.apiKey = { id: key._id };
+
+      next();
+    } catch (error) {
+      if (error instanceof ApiKeyError) {
+        return res.status(error.statusCode).json({
+          success: false,
+          message: error.message,
+        });
+      }
+
+      logError("API KEY VALIDATION ERROR", error, {
+        operation: "apiKeyAuthMiddleware",
+      });
+
+      return res.status(500).json({
         success: false,
-        message:
-          "Missing API secret. Provide it in the Authorization header.",
+        message: "Internal server error",
       });
     }
-
-    const key = await validateAndPrepareApiKey(secret);
-
-    req.apiKey = { id: key._id };
-
-    next();
-  } catch (error) {
-    if (error instanceof ApiKeyError) {
-      return res.status(error.statusCode).json({
-        success: false,
-        message: error.message,
-      });
-    }
-
-    console.error("API key validation error:", error);
-
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
-  }
+  };
 };
 
-export const apiKeyAuthOnlyMiddleware = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
-    const authHeader = req.headers.authorization;
+/** Enforces API-key auth + monthly quota (for link creation). */
+export const apiKeyAuthMiddleware = createApiKeyAuthMiddleware(true);
 
-    const secret = authHeader?.startsWith("Bearer ")
-      ? authHeader.slice(7).trim()
-      : null;
-
-    if (!secret) {
-      return res.status(401).json({
-        success: false,
-        message:
-          "Missing API secret. Provide it in the Authorization header.",
-      });
-    }
-
-    const key = await findAndRolloverApiKey(secret);
-
-    req.apiKey = { id: key._id };
-
-    next();
-  } catch (error) {
-    if (error instanceof ApiKeyError) {
-      return res.status(error.statusCode).json({
-        success: false,
-        message: error.message,
-      });
-    }
-
-    console.error("API key validation error:", error);
-
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
-  }
-};
+/** Enforces API-key auth only, no quota check (for read-only endpoints). */
+export const apiKeyAuthOnlyMiddleware = createApiKeyAuthMiddleware(false);

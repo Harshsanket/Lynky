@@ -1,84 +1,58 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router';
 import { getApiKeyUsage } from '../api/usage.api';
+import LeafCorner from '../components/LeafCorner';
 
 const STORAGE_KEY = 'lynky_secret_key';
 const STORAGE_USAGE = 'lynky_usage';
 const POLL_INTERVAL_MS = 10000;
 
-// Simple hand-drawn-style leaf sprig, reused via <use> to build each
-// corner cluster. Kept as basic bezier shapes so it stays lightweight
-// and matches the flat, geometric style used elsewhere on the site.
-const LeafDefs = () => (
-  <defs>
-    <path id="lynky-leaf" d="M0,0 C-9,-14 -9,-30 0,-42 C9,-30 9,-14 0,0 Z" />
-  </defs>
-);
+const API_KEY_LENGTH = 45;
+const API_KEY_PATTERN = /^[A-Za-z0-9_-]+$/;
+const INVALID_KEY_MESSAGE = `Invalid API key — keys are ${API_KEY_LENGTH} characters of letters, numbers, _ and -.`;
 
-const LEAF_PLACEMENTS = [
-  { x: 18, y: 22, rotate: -35, scale: 1.15 },
-  { x: 54, y: 10, rotate: 15, scale: 0.95 },
-  { x: 40, y: 58, rotate: -70, scale: 1.0 },
-  { x: 78, y: 44, rotate: 35, scale: 0.8 },
-  { x: 92, y: 84, rotate: -15, scale: 0.7 },
-  { x: 20, y: 92, rotate: -95, scale: 0.75 },
-];
+/**
+ * Keep only API-key characters (base64url alphabet), capped at the key
+ * length, so a link or any other text can't be entered into the field.
+ */
+const sanitizeApiKey = (value) =>
+  value.replace(/[^A-Za-z0-9_-]/g, '').slice(0, API_KEY_LENGTH);
 
-function LeafCorner({ className }) {
-  return (
-    <svg
-      className={className}
-      width="220"
-      height="220"
-      viewBox="0 0 140 140"
-      fill="none"
-      aria-hidden="true"
-    >
-      <LeafDefs />
-      <path
-        d="M4,4 C34,10 58,34 52,74 C48,102 26,120 8,132"
-        stroke="var(--color-clean)"
-        strokeWidth="1.5"
-        opacity="0.25"
-      />
-      {LEAF_PLACEMENTS.map((leaf, i) => (
-        <use
-          key={i}
-          href="#lynky-leaf"
-          x={leaf.x}
-          y={leaf.y}
-          transform={`rotate(${leaf.rotate} ${leaf.x} ${leaf.y}) scale(${leaf.scale})`}
-          fill="var(--color-clean)"
-          opacity="0.18"
-        />
-      ))}
-    </svg>
-  );
-}
+/**
+ * Whether the input is a well-formed API key (exactly 45 base64url chars).
+ */
+const isValidApiKey = (value) =>
+  value.length === API_KEY_LENGTH && API_KEY_PATTERN.test(value);
+
+/**
+ * Restore the saved session (secret + usage) from localStorage.
+ *
+ * Runs once at first render via lazy `useState` initializers, so a refresh
+ * doesn't kick the user back to the input screen. Invalid/stale data is
+ * cleared and treated as "no session".
+ */
+const readStoredSession = () => {
+  const key = localStorage.getItem(STORAGE_KEY);
+  const raw = localStorage.getItem(STORAGE_USAGE);
+
+  if (!key || !raw) return null;
+
+  try {
+    return { key, usage: JSON.parse(raw) };
+  } catch {
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(STORAGE_USAGE);
+    return null;
+  }
+};
 
 const API_Usage = () => {
   const navigate = useNavigate();
-  const [secretKey, setSecretKey] = useState('');
-  const [usage, setUsage] = useState(null);
+  const [secretKey, setSecretKey] = useState(() => readStoredSession()?.key ?? '');
+  const [usage, setUsage] = useState(() => readStoredSession()?.usage ?? null);
   const [usageError, setUsageError] = useState('');
   const [loadingUsage, setLoadingUsage] = useState(false);
   const pollRef = useRef(null);
-
-  // rehydrate from localStorage so a refresh doesn't kick the user back out
-  useEffect(() => {
-    const savedKey = localStorage.getItem(STORAGE_KEY);
-    const savedUsage = localStorage.getItem(STORAGE_USAGE);
-
-    if (savedKey && savedUsage) {
-      try {
-        setSecretKey(savedKey);
-        setUsage(JSON.parse(savedUsage));
-      } catch {
-        localStorage.removeItem(STORAGE_KEY);
-        localStorage.removeItem(STORAGE_USAGE);
-      }
-    }
-  }, []);
 
   // once usage is showing, keep it fresh in the background every 10s
   useEffect(() => {
@@ -102,6 +76,11 @@ const API_Usage = () => {
     const key = secretKey.trim();
 
     if (!key || loadingUsage) return;
+
+    if (!isValidApiKey(key)) {
+      setUsageError(INVALID_KEY_MESSAGE);
+      return;
+    }
 
     setLoadingUsage(true);
     setUsage(null);
@@ -206,15 +185,17 @@ const API_Usage = () => {
                   type="password"
                   value={secretKey}
                   onChange={(e) => {
-                    setSecretKey(e.target.value);
+                    setSecretKey(sanitizeApiKey(e.target.value));
                     setUsage(null);
                     setUsageError('');
                   }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') handleViewUsage();
                   }}
-                  placeholder="Paste your API secret"
+                  placeholder="Paste your 45-character API key"
                   disabled={loadingUsage}
+                  autoComplete="off"
+                  maxLength={API_KEY_LENGTH}
                   className="w-full flex-1 bg-transparent py-2.5 text-sm outline-none"
                   style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-ink)' }}
                 />

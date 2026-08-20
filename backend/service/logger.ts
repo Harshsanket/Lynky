@@ -1,3 +1,9 @@
+/**
+ * Structured, human-readable error logging for server-side failures.
+ *
+ * Prefer this over bare `console.error` for DB / crypto / pipeline errors so
+ * the timestamp, call context and full error fields are captured together.
+ */
 export const logError = (
   label: string,
   error: any,

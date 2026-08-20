@@ -1,21 +1,7 @@
 import mongoose from "mongoose";
+import { env } from "../src/config/env.js";
 
-const MONGODB_URI = process.env.MONGODB_URI;
-
-if (!MONGODB_URI) {
-  throw new Error(
-    "MONGODB_URI is not defined. Set it in your environment before starting the server."
-  );
-}
-
-if (
-  !MONGODB_URI.startsWith("mongodb://") &&
-  !MONGODB_URI.startsWith("mongodb+srv://")
-) {
-  throw new Error(
-    `MONGODB_URI is invalid. Expected a 'mongodb://' or 'mongodb+srv://' URI but received a value starting with '${MONGODB_URI.slice(0, 12)}'.`
-  );
-}
+const MONGODB_URI = env.MONGODB_URI;
 
 /* -------------------------------------------------------------------------- */
 /*                            Fail-fast connection                            */
@@ -36,21 +22,6 @@ const CONNECTION_OPTIONS = {
 
 // Fail fast when buffering is accidentally left on for a query.
 mongoose.set("bufferTimeoutMS", 5000);
-
-const connectionStateToString = (state: number): string => {
-  switch (state) {
-    case 0:
-      return "disconnected";
-    case 1:
-      return "connected";
-    case 2:
-      return "connecting";
-    case 3:
-      return "disconnecting";
-    default:
-      return `unknown(${state})`;
-  }
-};
 
 /* -------------------------------------------------------------------------- */
 /*                                Global cache                                */
@@ -88,7 +59,7 @@ const registerConnectionEvents = () => {
 
   // Reset the cached promise/connection whenever the underlying socket drops
   // so the next connectDatabase() call reconnects instead of reusing a
-  // stale connection (the root cause of the "buffering timed out" errors).
+  // stale connection (the root cause of "buffering timed out" errors).
   mongoose.connection.on("disconnected", () => {
     cached.promise = null;
     cached.conn = null;
@@ -110,6 +81,13 @@ const registerConnectionEvents = () => {
 /*                              connectDatabase                               */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Connect to MongoDB, reusing an in-flight or existing connection.
+ *
+ * Safe to call on every request (used by `databaseConnectionMiddleware`);
+ * it short-circuits when already connected and caches the in-flight
+ * handshake so concurrent requests share a single connection attempt.
+ */
 export const connectDatabase = async (): Promise<typeof mongoose> => {
   const readyState = mongoose.connection.readyState;
 
@@ -169,18 +147,4 @@ export const connectDatabase = async (): Promise<typeof mongoose> => {
 
     throw error;
   }
-};
-
-/* -------------------------------------------------------------------------- */
-/*                                Connection state                            */
-/* -------------------------------------------------------------------------- */
-
-export const getDatabaseStatus = () => {
-  return {
-    connected:
-      mongoose.connection.readyState === 1,
-    state: connectionStateToString(
-      mongoose.connection.readyState
-    ),
-  };
 };
