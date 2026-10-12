@@ -11,7 +11,8 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "start": "node dist/src/server.js",
-    "provision:keys": "tsx scripts/provision-api-keys.ts"
+    "provision:keys": "tsx scripts/provision-api-keys.ts",
+    "migrate:urlhash": "tsx scripts/migrate-urlhash-unique.ts"
   },
   "dependencies": {
     "cors": "^2.8.6",

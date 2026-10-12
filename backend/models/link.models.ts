@@ -6,6 +6,8 @@ import mongoose, { Document, Schema } from "mongoose";
  * - `code` is the unique short identifier (`/code` redirects to destination).
  * - `originalUrl` stores the AES-256-GCM encrypted, cleaned destination.
  * - `urlHash` is a sha256 of the cleaned URL, used to dedupe identical links.
+ *   It is also unique, so the database — not a prior read — is what guarantees
+ *   a single record per destination under concurrent writes.
  * - `expiresAt` carries a TTL index so MongoDB auto-deletes expired records.
  */
 export interface ILink extends Document {
@@ -35,6 +37,7 @@ const linkSchema = new Schema<ILink>(
     urlHash: {
       type: String,
       required: true,
+      unique: true,
       index: true,
       trim: true,
     },
