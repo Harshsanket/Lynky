@@ -18,14 +18,17 @@ export const corsMiddleware = cors({
       return callback(null, true);
     }
 
-    return callback(new Error("Not allowed by CORS"));
+    // Reject by omitting the CORS headers rather than throwing. Throwing
+    // would turn a browser-policy decision into a 500 error response.
+    return callback(null, false);
   },
 
-  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  methods: ["GET", "POST", "OPTIONS"],
 
   allowedHeaders: ["Content-Type", "Authorization"],
 
-  credentials: true,
+  // No cookies or other credentialed requests are used.
+  credentials: false,
 
   optionsSuccessStatus: 204,
 });

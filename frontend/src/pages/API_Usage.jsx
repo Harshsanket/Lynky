@@ -2,46 +2,49 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router';
 import { getApiKeyUsage } from '../api/usage.api';
 import LeafCorner from '../components/LeafCorner';
+import {
+  API_KEY_MAX_INPUT_LENGTH,
+  isValidApiKey,
+  sanitizeApiKey,
+} from '../lib/api-key';
 
 const STORAGE_KEY = 'lynky_secret_key';
 const STORAGE_USAGE = 'lynky_usage';
 const POLL_INTERVAL_MS = 10000;
 
-const API_KEY_LENGTH = 45;
-const API_KEY_PATTERN = /^[A-Za-z0-9_-]+$/;
-const INVALID_KEY_MESSAGE = `Invalid API key — keys are ${API_KEY_LENGTH} characters of letters, numbers, _ and -.`;
+const INVALID_KEY_MESSAGE =
+  'Invalid API key. Paste the key exactly as it was issued.';
 
 /**
- * Keep only API-key characters (base64url alphabet), capped at the key
- * length, so a link or any other text can't be entered into the field.
+ * Render a usage number, falling back to a dash when the API returned an
+ * unexpected payload (for example a legacy record without counters).
  */
-const sanitizeApiKey = (value) =>
-  value.replace(/[^A-Za-z0-9_-]/g, '').slice(0, API_KEY_LENGTH);
+const formatCount = (value) =>
+  typeof value === 'number' && Number.isFinite(value)
+    ? value.toLocaleString()
+    : '—';
 
 /**
- * Whether the input is a well-formed API key (exactly 45 base64url chars).
- */
-const isValidApiKey = (value) =>
-  value.length === API_KEY_LENGTH && API_KEY_PATTERN.test(value);
-
-/**
- * Restore the saved session (secret + usage) from localStorage.
+ * Restore the saved session (secret + usage) from sessionStorage.
+ *
+ * Session storage is intentionally used instead of localStorage so a raw API
+ * secret does not outlive the browser tab.
  *
  * Runs once at first render via lazy `useState` initializers, so a refresh
  * doesn't kick the user back to the input screen. Invalid/stale data is
  * cleared and treated as "no session".
  */
 const readStoredSession = () => {
-  const key = localStorage.getItem(STORAGE_KEY);
-  const raw = localStorage.getItem(STORAGE_USAGE);
+  const key = sessionStorage.getItem(STORAGE_KEY);
+  const raw = sessionStorage.getItem(STORAGE_USAGE);
 
   if (!key || !raw) return null;
 
   try {
     return { key, usage: JSON.parse(raw) };
   } catch {
-    localStorage.removeItem(STORAGE_KEY);
-    localStorage.removeItem(STORAGE_USAGE);
+    sessionStorage.removeItem(STORAGE_KEY);
+    sessionStorage.removeItem(STORAGE_USAGE);
     return null;
   }
 };
@@ -59,12 +62,25 @@ const API_Usage = () => {
     if (!usage || !secretKey) return;
 
     pollRef.current = setInterval(async () => {
+      // Do not spend requests while the tab is in the background.
+      if (document.hidden) return;
+
       try {
         const data = await getApiKeyUsage(secretKey);
         setUsage(data?.data);
-        localStorage.setItem(STORAGE_USAGE, JSON.stringify(data?.data));
-      } catch {
-        // background refresh failed — keep showing the last known numbers
+        sessionStorage.setItem(STORAGE_USAGE, JSON.stringify(data?.data));
+      } catch (error) {
+        // Keep the last known numbers on transient failures, but drop the
+        // session when the key is no longer accepted.
+        if (error?.status === 401 || error?.status === 403) {
+          sessionStorage.removeItem(STORAGE_KEY);
+          sessionStorage.removeItem(STORAGE_USAGE);
+          setSecretKey('');
+          setUsage(null);
+          setUsageError(
+            error?.data?.message || 'This API key is no longer valid.',
+          );
+        }
       }
     }, POLL_INTERVAL_MS);
 
@@ -90,9 +106,14 @@ const API_Usage = () => {
       const data = await getApiKeyUsage(key);
 
       setUsage(data?.data);
-      localStorage.setItem(STORAGE_KEY, key);
-      localStorage.setItem(STORAGE_USAGE, JSON.stringify(data?.data));
+      sessionStorage.setItem(STORAGE_KEY, key);
+      sessionStorage.setItem(STORAGE_USAGE, JSON.stringify(data?.data));
     } catch (error) {
+      if (error?.status === 401 || error?.status === 403) {
+        sessionStorage.removeItem(STORAGE_KEY);
+        sessionStorage.removeItem(STORAGE_USAGE);
+      }
+
       setUsageError(
         error?.data?.message || 'Unable to load usage stats.',
       );
@@ -103,8 +124,8 @@ const API_Usage = () => {
 
   const handleExit = () => {
     clearInterval(pollRef.current);
-    localStorage.removeItem(STORAGE_KEY);
-    localStorage.removeItem(STORAGE_USAGE);
+    sessionStorage.removeItem(STORAGE_KEY);
+    sessionStorage.removeItem(STORAGE_USAGE);
     setSecretKey('');
     setUsage(null);
     setUsageError('');
@@ -192,10 +213,13 @@ const API_Usage = () => {
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') handleViewUsage();
                   }}
-                  placeholder="Paste your 45-character API key"
+                  placeholder="Paste your API key"
+                  aria-label="API key"
+                  aria-invalid={Boolean(usageError)}
+                  aria-describedby={usageError ? 'usage-error' : undefined}
                   disabled={loadingUsage}
                   autoComplete="off"
-                  maxLength={API_KEY_LENGTH}
+                  maxLength={API_KEY_MAX_INPUT_LENGTH}
                   className="w-full flex-1 bg-transparent py-2.5 text-sm outline-none"
                   style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-ink)' }}
                 />
@@ -218,6 +242,8 @@ const API_Usage = () => {
 
             {usageError && (
               <p
+                id="usage-error"
+                role="alert"
                 className="mt-3 text-xs"
                 style={{ fontFamily: 'var(--font-body)', color: 'var(--color-dirty)' }}
               >
@@ -241,7 +267,7 @@ const API_Usage = () => {
                     className="mt-1 text-lg"
                     style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-ink)' }}
                   >
-                    {usage.currentUsage.toLocaleString()}
+                    {formatCount(usage.currentUsage)}
                   </p>
                 </div>
 
@@ -259,7 +285,7 @@ const API_Usage = () => {
                     className="mt-1 text-lg"
                     style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-ink)' }}
                   >
-                    {usage.monthlyLimit.toLocaleString()}
+                    {formatCount(usage.monthlyLimit)}
                   </p>
                 </div>
 
@@ -277,7 +303,7 @@ const API_Usage = () => {
                     className="mt-1 text-lg"
                     style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-ink)' }}
                   >
-                    {usage.totalUsage12m.toLocaleString()}
+                    {formatCount(usage.totalUsage12m)}
                   </p>
                 </div>
 
@@ -285,7 +311,7 @@ const API_Usage = () => {
                   className="text-xs sm:col-span-3"
                   style={{ fontFamily: 'var(--font-body)', color: 'var(--color-ink-soft)' }}
                 >
-                  {usage.month} · resets at the end of every month
+                  {usage.month ?? 'Current month'} · resets at the end of every month
                 </p>
               </div>
             )}

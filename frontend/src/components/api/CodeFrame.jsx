@@ -1,6 +1,6 @@
 /**
  * CodeFrame — request/response code block with a labelled header
- * (POST /api/v1/urls).
+ * (POST /api/v1/api/urls, the authenticated external endpoint).
  */
 
 import { mono } from "../../lib/theme";
@@ -21,7 +21,7 @@ export default function CodeFrame() {
           </span>
 
           <span className="text-[10px]" style={{ ...mono, color: "var(--color-ink)" }}>
-            /api/v1/urls
+            /api/v1/api/urls
           </span>
         </div>
 

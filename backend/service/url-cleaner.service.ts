@@ -131,6 +131,15 @@ const extractWrappedUrl = (
       continue;
     }
 
+    // Do not unwrap a URL the provider marks as an exception.
+    if (
+      provider.exceptions.some((exception) =>
+        exception.test(urlString)
+      )
+    ) {
+      continue;
+    }
+
     for (const redirection of provider.redirections) {
       const match = urlString.match(redirection);
       const captured = match?.[1];
@@ -167,15 +176,20 @@ const extractWrappedUrl = (
 };
 
 /**
- * Remove duplicate query parameters, keeping the first occurrence.
+ * Remove only identical `key=value` pairs, keeping the first occurrence.
+ *
+ * Repeated keys with different values are meaningful for filters, arrays, and
+ * some APIs, so they must survive cleaning.
  */
 const dedupeParams = (url: URL): void => {
   const seen = new Set<string>();
   const entries: Array<[string, string]> = [];
 
   for (const [key, value] of url.searchParams) {
-    if (!seen.has(key)) {
-      seen.add(key);
+    const pair = JSON.stringify([key, value]);
+
+    if (!seen.has(pair)) {
+      seen.add(pair);
       entries.push([key, value]);
     }
   }

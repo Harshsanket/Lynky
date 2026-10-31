@@ -4,6 +4,7 @@
  */
 
 import { mono, display, body } from "../../lib/theme";
+import { MONTHLY_LIMIT_LABEL } from "../../lib/config";
 
 export default function AccessPanel() {
   return (
@@ -51,7 +52,7 @@ export default function AccessPanel() {
 
           <div className="mt-8">
             <span className="block text-3xl" style={{ ...display, color: "var(--color-ink)", fontWeight: 500 }}>
-              10,000
+              {MONTHLY_LIMIT_LABEL}
             </span>
 
             <span className="mt-1 block text-[10px] uppercase tracking-[0.12em]" style={{ ...mono, color: "var(--color-ink-soft)" }}>

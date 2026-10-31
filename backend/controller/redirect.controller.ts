@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import { Link } from "../models/link.models.js";
 import { decryptUrl } from "../service/encryption.service.js";
 import { logError } from "../service/logger.js";
+import { assertNotOwnLink } from "../service/own-link.service.js";
 import { validateUrl } from "../service/url-validator.service.js";
 
 /**
@@ -50,7 +51,7 @@ export const redirectToOriginalUrl = async (
     // Defense-in-depth: never redirect to anything that is not a clean
     // HTTP(S) URL, even if a stored record was tampered with.
     try {
-      validateUrl(originalUrl);
+      assertNotOwnLink(validateUrl(originalUrl));
     } catch (error) {
       logError("REDIRECT DESTINATION REJECTED", error, {
         operation: "redirectToOriginalUrl",
@@ -62,6 +63,11 @@ export const redirectToOriginalUrl = async (
         message: "Unable to resolve destination",
       });
     }
+
+    // Do not leak the page that linked to the short URL to the destination,
+    // and do not cache a link that may expire.
+    res.setHeader("Referrer-Policy", "no-referrer");
+    res.setHeader("Cache-Control", "no-store");
 
     return res.redirect(302, originalUrl);
   } catch (error) {

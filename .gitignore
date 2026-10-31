@@ -121,3 +121,7 @@ coverage/
 
 .Dockerfile.local
 docker-compose.override.yml
+# Local-only agent config (docs-internal)
+/AGENTS.md
+/docs-internal/
+/.github

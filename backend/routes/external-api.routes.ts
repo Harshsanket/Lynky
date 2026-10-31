@@ -1,12 +1,14 @@
 import { Router } from "express";
 import { externalShortenController, readApiKeyUsage } from "../controller/api-key.controller.js";
 import { apiKeyAuthMiddleware, apiKeyAuthOnlyMiddleware } from "../middleware/api-key-auth.middleware.js";
+import { linkRateLimitMiddleware } from "../middleware/rate-limit.middleware.js";
 
 const router = Router();
 
 // Authenticated shorten endpoint (quota enforced before creating the link).
 router.post(
   "/urls",
+  linkRateLimitMiddleware,
   apiKeyAuthMiddleware,
   externalShortenController
 );

@@ -60,28 +60,19 @@ export const generateApiSecret = (): string => {
   return secret;
 };
 
-export const provisionApiKeys = async (
-  count: number
-): Promise<string[]> => {
-  const secrets: string[] = [];
+export const provisionApiKey = async (): Promise<string> => {
+  const secret = generateApiSecret();
+  const currentMonth = getUsageMonth();
 
-  for (let i = 0; i < count; i++) {
-    const secret = generateApiSecret();
+  await ApiKey.create({
+    keyHash: hashApiSecret(secret),
+    status: "active",
+    monthlyUsageCount: 0,
+    usageMonth: currentMonth,
+    usageHistory: [{ month: currentMonth, count: 0 }],
+  });
 
-    const currentMonth = getUsageMonth();
-
-    await ApiKey.create({
-      keyHash: hashApiSecret(secret),
-      status: "active",
-      monthlyUsageCount: 0,
-      usageMonth: currentMonth,
-      usageHistory: [{ month: currentMonth, count: 0 }],
-    });
-
-    secrets.push(secret);
-  }
-
-  return secrets;
+  return secret;
 };
 
 const trimUsageHistory = (
@@ -187,20 +178,45 @@ export const incrementApiKeyUsage = async (
 ): Promise<boolean> => {
   const currentMonth = getUsageMonth();
 
+  // One atomic update handles both the normal increment and a month rollover,
+  // so a request that crosses the month boundary cannot carry last month's
+  // count into the new month's history.
+  const isNewMonth = {
+    $ne: ["$usageMonth", currentMonth],
+  };
+
+  const nextCount = {
+    $cond: [
+      isNewMonth,
+      1,
+      {
+        $add: [
+          { $ifNull: ["$monthlyUsageCount", 0] },
+          1,
+        ],
+      },
+    ],
+  };
+
   const result = await ApiKey.updateOne(
     {
       _id: keyId,
-      monthlyUsageCount: { $lt: MONTHLY_LINK_LIMIT },
+      status: "active",
+      $or: [
+        {
+          usageMonth: currentMonth,
+          monthlyUsageCount: {
+            $lt: MONTHLY_LINK_LIMIT,
+          },
+        },
+        { usageMonth: { $ne: currentMonth } },
+      ],
     },
     [
       {
         $set: {
-          monthlyUsageCount: {
-            $add: [
-              { $ifNull: ["$monthlyUsageCount", 0] },
-              1,
-            ],
-          },
+          monthlyUsageCount: nextCount,
+          usageMonth: currentMonth,
           lastUsedAt: new Date(),
           usageHistory: {
             $let: {
@@ -216,12 +232,7 @@ export const incrementApiKeyUsage = async (
                     },
                   },
                 },
-                currentCount: {
-                  $add: [
-                    { $ifNull: ["$monthlyUsageCount", 0] },
-                    1,
-                  ],
-                },
+                nextCount,
               },
               in: {
                 $slice: [
@@ -231,7 +242,7 @@ export const incrementApiKeyUsage = async (
                       [
                         {
                           month: currentMonth,
-                          count: "$$currentCount",
+                          count: "$$nextCount",
                         },
                       ],
                     ],
@@ -250,9 +261,85 @@ export const incrementApiKeyUsage = async (
   return result.modifiedCount > 0;
 };
 
-export const getApiKeyUsage = async (secret: string) => {
-  const key = await findAndRolloverApiKey(secret);
+/**
+ * Best-effort rollback for a reserved usage slot.
+ *
+ * Called when a request reserved quota but the link could not be created, so
+ * validation and database failures do not consume a key's monthly allowance.
+ * The decrement is clamped at zero and only touches the current month's
+ * history entry.
+ */
+export const decrementApiKeyUsage = async (
+  keyId: mongoose.Types.ObjectId
+): Promise<boolean> => {
+  const currentMonth = getUsageMonth();
 
+  const result = await ApiKey.updateOne(
+    {
+      _id: keyId,
+      usageMonth: currentMonth,
+      monthlyUsageCount: { $gt: 0 },
+    },
+    [
+      {
+        $set: {
+          monthlyUsageCount: {
+            $subtract: [
+              { $ifNull: ["$monthlyUsageCount", 0] },
+              1,
+            ],
+          },
+          usageHistory: {
+            $map: {
+              input: { $ifNull: ["$usageHistory", []] },
+              as: "entry",
+              in: {
+                $cond: [
+                  { $eq: ["$$entry.month", currentMonth] },
+                  {
+                    $mergeObjects: [
+                      "$$entry",
+                      {
+                        count: {
+                          $max: [
+                            0,
+                            {
+                              $subtract: [
+                                {
+                                  $ifNull: [
+                                    "$$entry.count",
+                                    0,
+                                  ],
+                                },
+                                1,
+                              ],
+                            },
+                          ],
+                        },
+                      },
+                    ],
+                  },
+                  "$$entry",
+                ],
+              },
+            },
+          },
+        },
+      },
+    ],
+    { updatePipeline: true }
+  );
+
+  return result.modifiedCount > 0;
+};
+
+interface UsageKey {
+  monthlyUsageCount: number;
+  usageMonth: string;
+  usageHistory: { month: string; count: number }[];
+}
+
+const buildUsageResponse = (key: UsageKey) => {
   const usageHistory = trimUsageHistory(
     key.usageHistory ?? [],
     key.usageMonth
@@ -269,4 +356,29 @@ export const getApiKeyUsage = async (secret: string) => {
     monthlyLimit: MONTHLY_LINK_LIMIT,
     totalUsage12m,
   };
+};
+
+/**
+ * Usage response for a key already resolved by the auth middleware.
+ *
+ * Avoids re-hashing the secret and repeating the month-rollover write on the
+ * read-only usage endpoint.
+ */
+export const getApiKeyUsageById = async (
+  keyId: mongoose.Types.ObjectId
+) => {
+  const key = await ApiKey.findById(keyId);
+
+  if (!key) {
+    throw new ApiKeyError("Invalid API secret.", 401);
+  }
+
+  if (key.status !== "active") {
+    throw new ApiKeyError(
+      "This API key is disabled. Contact the owner to re-enable it.",
+      403
+    );
+  }
+
+  return buildUsageResponse(key);
 };

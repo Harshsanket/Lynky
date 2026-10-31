@@ -11,7 +11,7 @@ import { logError } from "../service/logger.js";
  * unauthenticated one would let anyone inflate the number.
  */
 export const readTotalLinks = async (
-  req: Request,
+  _req: Request,
   res: Response
 ) => {
   try {

@@ -1,4 +1,24 @@
 /**
+ * Reduce a URL to its origin and path for logging.
+ *
+ * Query strings and fragments often carry tokens, identifiers, or personal
+ * data, so they must never reach application logs.
+ */
+export const redactUrl = (value: unknown): string => {
+  if (typeof value !== "string") {
+    return "<redacted>";
+  }
+
+  try {
+    const url = new URL(value);
+
+    return `${url.origin}${url.pathname}`;
+  } catch {
+    return "<invalid-url>";
+  }
+};
+
+/**
  * Structured, human-readable error logging for server-side failures.
  *
  * Prefer this over bare `console.error` for DB / crypto / pipeline errors so

@@ -1,9 +1,13 @@
 import type { Request, Response } from "express";
 import mongoose from "mongoose";
-import { createShortUrl } from "../service/url.service.js";
+import {
+  createShortUrlFromPrepared,
+  prepareUrl,
+} from "../service/url.service.js";
 import { incrementTotalLinks } from "../service/stats.service.js";
 import {
   ApiKeyError,
+  decrementApiKeyUsage,
   findAndRolloverApiKey,
   incrementApiKeyUsage,
 } from "../service/api-key.service.js";
@@ -42,6 +46,10 @@ export const createShortUrlController = async (
       apiKeyId = key._id;
     }
 
+    // Validate and clean before reserving quota so bad input never counts
+    // against the key's monthly allowance.
+    const prepared = prepareUrl(url);
+
     // Reserve the quota slot *before* creating the link so an over-quota key
     // can never sneak a record into the database.
     if (apiKeyId) {
@@ -55,10 +63,29 @@ export const createShortUrlController = async (
       }
     }
 
-    const result = await createShortUrl(url);
+    let result;
 
     try {
-      await incrementTotalLinks();
+      result = await createShortUrlFromPrepared(prepared);
+    } catch (error) {
+      // The slot was reserved but no link was created; give it back.
+      if (apiKeyId) {
+        try {
+          await decrementApiKeyUsage(apiKeyId);
+        } catch (rollbackError) {
+          logError("API KEY USAGE ROLLBACK ERROR", rollbackError, {
+            operation: "createShortUrlController",
+          });
+        }
+      }
+
+      throw error;
+    }
+
+    try {
+      if (result.created) {
+        await incrementTotalLinks();
+      }
     } catch (error) {
       logError("STATS INCREMENT ERROR", error, {
         operation: "incrementTotalLinks",

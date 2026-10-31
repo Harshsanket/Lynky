@@ -7,9 +7,9 @@
   "type": "module",
   "main": "dist/src/server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node --import tsx --test tests/*.test.ts",
     "dev": "tsx watch src/server.ts",
-    "build": "tsc",
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json && node scripts/copy-config.mjs",
     "start": "node dist/src/server.js",
     "provision:keys": "tsx scripts/provision-api-keys.ts",
     "migrate:urlhash": "tsx scripts/migrate-urlhash-unique.ts"
@@ -19,6 +19,7 @@
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "express-rate-limit": "^8.6.2",
+    "helmet": "^8.3.0",
     "mongoose": "^9.9.2"
   },
   "devDependencies": {

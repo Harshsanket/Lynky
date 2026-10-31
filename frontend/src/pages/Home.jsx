@@ -77,8 +77,8 @@ export default function Home() {
 
             <Feature
               mark="03 / forget"
-              title="No cookies, no logs"
-              body="Lynky doesn't watch what you click. It cleans the link, automatically deletes it after 3 days, and gets out of the way."
+              title="No cookies, no click tracking"
+              body="Lynky doesn't track clicks. It cleans the link, automatically deletes it at expiry, and gets out of the way."
             />
           </div>
         </main>

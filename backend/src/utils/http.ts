@@ -15,7 +15,7 @@ export const extractBearerSecret = (
 ): string | null => {
   const header = req.headers.authorization;
 
-  return header?.startsWith("Bearer ")
-    ? header.slice(7).trim()
-    : null;
+  const match = header?.match(/^Bearer\s+(.+)$/i);
+
+  return match?.[1]?.trim() || null;
 };

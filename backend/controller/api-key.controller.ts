@@ -1,10 +1,16 @@
 import type { Request, Response } from "express";
-import { createShortUrl } from "../service/url.service.js";
-import { incrementApiKeyUsage, getApiKeyUsage } from "../service/api-key.service.js";
+import {
+  createShortUrlFromPrepared,
+  prepareUrl,
+} from "../service/url.service.js";
+import {
+  decrementApiKeyUsage,
+  getApiKeyUsageById,
+  incrementApiKeyUsage,
+} from "../service/api-key.service.js";
 import { incrementTotalLinks } from "../service/stats.service.js";
 import { logError } from "../service/logger.js";
 import { PublicError, getPublicErrorMessage } from "../service/public-error.service.js";
-import { extractBearerSecret } from "../src/utils/http.js";
 import { env } from "../src/config/env.js";
 
 /**
@@ -36,6 +42,10 @@ export const externalShortenController = async (
       });
     }
 
+    // Validate and clean before reserving quota so bad input never counts
+    // against the key's monthly allowance.
+    const prepared = prepareUrl(url);
+
     const incremented = await incrementApiKeyUsage(apiKeyId);
 
     if (!incremented) {
@@ -45,10 +55,27 @@ export const externalShortenController = async (
       });
     }
 
-    const result = await createShortUrl(url);
+    let result;
 
     try {
-      await incrementTotalLinks();
+      result = await createShortUrlFromPrepared(prepared);
+    } catch (error) {
+      // The slot was reserved but no link was created; give it back.
+      try {
+        await decrementApiKeyUsage(apiKeyId);
+      } catch (rollbackError) {
+        logError("API KEY USAGE ROLLBACK ERROR", rollbackError, {
+          operation: "externalShortenController",
+        });
+      }
+
+      throw error;
+    }
+
+    try {
+      if (result.created) {
+        await incrementTotalLinks();
+      }
     } catch (error) {
       logError("STATS INCREMENT ERROR", error, {
         operation: "incrementTotalLinks",
@@ -88,9 +115,9 @@ export const readApiKeyUsage = async (
   res: Response
 ) => {
   try {
-    const secret = extractBearerSecret(req);
+    const apiKeyId = req.apiKey?.id;
 
-    if (!secret) {
+    if (!apiKeyId) {
       return res.status(401).json({
         success: false,
         message:
@@ -98,7 +125,7 @@ export const readApiKeyUsage = async (
       });
     }
 
-    const usage = await getApiKeyUsage(secret);
+    const usage = await getApiKeyUsageById(apiKeyId);
 
     return res.status(200).json({
       success: true,

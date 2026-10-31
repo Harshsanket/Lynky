@@ -13,6 +13,7 @@ const ServerStatus = () => {
 
     const checkServer = async () => {
       const endTime = Date.now() + 2 * 60 * 1000;
+      let delay = 1000;
 
       while (!cancelled && Date.now() < endTime) {
         try {
@@ -28,7 +29,8 @@ const ServerStatus = () => {
           // Keep trying until the 2-minute timeout.
         }
 
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        delay = Math.min(delay * 2, 15_000);
       }
 
       if (!cancelled) {

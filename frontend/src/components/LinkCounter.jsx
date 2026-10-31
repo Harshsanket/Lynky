@@ -24,7 +24,7 @@ const LinkCounter = () => {
     };
   }, []);
 
-  if (total === null) return null;
+  if (typeof total !== "number" || !Number.isFinite(total)) return null;
 
   return (
     <span

@@ -12,7 +12,7 @@ const NODES = [
   { n: "02", label: "code", note: "4–6 character identifier", tone: "neutral" },
   { n: "03", label: "encrypt", note: "AES-256-GCM", tone: "neutral" },
   { n: "04", label: "store", note: "temporary record", tone: "clean" },
-  { n: "05", label: "expire", note: "deleted after 3 days", tone: "clean" },
+  { n: "05", label: "expire", note: "deleted at expiry", tone: "clean" },
 ];
 
 const toneColor = (tone) => {

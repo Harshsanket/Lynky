@@ -11,6 +11,7 @@ import Section from "../components/Section";
 import CodeFrame from "../components/api/CodeFrame";
 import DetailRow from "../components/api/DetailRow";
 import AccessPanel from "../components/api/AccessPanel";
+import { MONTHLY_LIMIT_LABEL } from "../lib/config";
 
 const API = () => {
   return (
@@ -76,7 +77,7 @@ const API = () => {
         <div className="border-y" style={{ borderColor: "var(--color-border)" }}>
           <DetailRow label="method" value="POST" note="Creates one cleaned and shortened URL." />
 
-          <DetailRow label="endpoint" value="/api/v1/urls" note="Versioned API route for URL creation." />
+          <DetailRow label="endpoint" value="/api/v1/api/urls" note="Versioned authenticated route for URL creation." />
 
           <DetailRow label="auth" value="Bearer secret" note="Pass the issued API secret in the Authorization header." />
 
@@ -84,7 +85,7 @@ const API = () => {
 
           <DetailRow label="output" value="shortUrl" tone="clean" note="The cleaned destination represented by a Lynky short URL." />
 
-          <DetailRow label="quota" value="10,000 / month" tone="dirty" note="Applied per API secret." />
+          <DetailRow label="quota" value={`${MONTHLY_LIMIT_LABEL} / month`} tone="dirty" note="Applied per API secret." />
         </div>
       </Section>
 

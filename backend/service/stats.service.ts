@@ -4,8 +4,8 @@ import { Stats } from "../models/stats.models.js";
  * Atomically increment the global counter and return the new value.
  * `upsert: true` lazily creates the single "global" document on first use.
  */
-export const incrementTotalLinks = async (): Promise<number> => {
-  const stats = await Stats.findOneAndUpdate(
+const incrementOnce = async () =>
+  Stats.findOneAndUpdate(
     { key: "global" },
     {
       $inc: {
@@ -19,7 +19,22 @@ export const incrementTotalLinks = async (): Promise<number> => {
     }
   ).lean();
 
-  return stats?.totalLinks ?? 0;
+export const incrementTotalLinks = async (): Promise<number> => {
+  try {
+    const stats = await incrementOnce();
+
+    return stats?.totalLinks ?? 0;
+  } catch (error: any) {
+    // Two first-ever requests can race on the unique `key` index; retry once
+    // now that the document exists.
+    if (error?.code === 11000) {
+      const stats = await incrementOnce();
+
+      return stats?.totalLinks ?? 0;
+    }
+
+    throw error;
+  }
 };
 
 /**

@@ -8,45 +8,8 @@ import { validateUrl } from "./url-validator.service.js";
 import { findExistingUrl, findLinkByUrlHash } from "./url-existance-checker.service.js";
 import { getExpirationDate } from "./url-expiration.service.js";
 import { encryptUrl } from "./encryption.service.js";
-import { PublicError } from "./public-error.service.js";
-import { logError } from "./logger.js";
-
-/**
- * Origins owned by Lynky itself. We refuse to shorten our own links to avoid
- * creating short-code loops.
- */
-const getOwnOrigins = (): string[] => {
-  return [env.PUBLIC_URL, env.FRONTEND_URL]
-    .filter((origin): origin is string => Boolean(origin))
-    .map((origin) => origin.replace(/\/$/, ""));
-};
-
-/**
- * Throw if the given URL points back at a Lynky-owned origin.
- */
-const assertNotOwnLink = (parsedUrl: URL): void => {
-  const ownOrigins = getOwnOrigins();
-
-  if (ownOrigins.length === 0) {
-    return;
-  }
-
-  const normalized = `${parsedUrl.origin}${parsedUrl.pathname}`.replace(
-    /\/$/,
-    ""
-  );
-
-  for (const ownOrigin of ownOrigins) {
-    if (
-      normalized === ownOrigin ||
-      normalized.startsWith(`${ownOrigin}/`)
-    ) {
-      throw new PublicError(
-        "Cannot give a short code for Lynky's own link."
-      );
-    }
-  }
-};
+import { assertNotOwnLink } from "./own-link.service.js";
+import { logError, redactUrl } from "./logger.js";
 
 /**
  * Create (or refresh) a short link for the given input URL.
@@ -108,115 +71,152 @@ const adoptExistingLink = async (
     { returnDocument: "after" }
   ).lean();
 
-  const refreshedExpiresAt = link?.expiresAt ?? expiresAt;
+  // The row may have been TTL-deleted between the lookup and this update.
+  if (!link) {
+    return null;
+  }
 
   return {
-    code: existing.code,
+    code: link.code,
     originalUrl: cleanedUrl,
-    shortUrl: getPublicUrl(existing.code),
-    expiresAt: refreshedExpiresAt,
+    shortUrl: getPublicUrl(link.code),
+    expiresAt: link.expiresAt,
+    created: false,
   };
 };
 
-export const createShortUrl = async (inputUrl: string) => {
-  try {
-    const parsedUrl = validateUrl(inputUrl);
+export interface PreparedUrl {
+  cleanedUrl: string;
+  urlHash: string;
+}
 
-    assertNotOwnLink(parsedUrl);
+/**
+ * Validate and clean an input URL without touching the database.
+ *
+ * Controllers call this before reserving API-key quota, so invalid or
+ * impossible-to-clean URLs never consume a key's monthly allowance.
+ */
+export const prepareUrl = (inputUrl: string): PreparedUrl => {
+  const parsedUrl = validateUrl(inputUrl);
 
-    const cleanedUrl = cleanUrl(inputUrl);
+  assertNotOwnLink(parsedUrl);
 
-    const urlHash = hashUrl(cleanedUrl);
+  const cleanedUrl = cleanUrl(inputUrl);
 
-    const existingUrl = await findExistingUrl(urlHash);
+  // Cleaning may unwrap a redirect chain and change the destination host, so
+  // re-run the own-link guard against the final URL as well as the input.
+  assertNotOwnLink(new URL(cleanedUrl));
 
-    if (existingUrl) {
-      return await adoptExistingLink(existingUrl, cleanedUrl);
+  return {
+    cleanedUrl,
+    urlHash: hashUrl(cleanedUrl),
+  };
+};
+
+/**
+ * Create (or refresh) a short link for a URL that has already been validated
+ * and cleaned by `prepareUrl`.
+ */
+export const createShortUrlFromPrepared = async ({
+  cleanedUrl,
+  urlHash,
+}: PreparedUrl) => {
+  const existingUrl = await findExistingUrl(urlHash);
+
+  if (existingUrl) {
+    const adopted = await adoptExistingLink(
+      existingUrl,
+      cleanedUrl
+    );
+
+    if (adopted) {
+      return adopted;
     }
+  }
 
-    const expiresAt = getExpirationDate();
+  const expiresAt = getExpirationDate();
 
-    for (
-      let attempt = 0;
-      attempt < env.MAX_CODE_ATTEMPTS;
-      attempt++
-    ) {
-      const code = generateCode(
+  for (
+    let attempt = 0;
+    attempt < env.MAX_CODE_ATTEMPTS;
+    attempt++
+  ) {
+    const code = generateCode(
+      urlHash,
+      attempt,
+      getCodeLength()
+    );
+
+    try {
+      const link = await Link.create({
+        code,
+        originalUrl: encryptUrl(cleanedUrl),
         urlHash,
-        attempt,
-        getCodeLength()
-      );
+        expiresAt,
+      });
 
-      try {
-        const link = await Link.create({
-          code,
-          originalUrl: encryptUrl(cleanedUrl),
-          urlHash,
-          expiresAt,
-        });
+      const shortUrl = getPublicUrl(link.code);
 
-        const shortUrl = getPublicUrl(link.code);
-
-        return {
-          code: link.code,
-          originalUrl: cleanedUrl,
-          shortUrl,
-          expiresAt: link.expiresAt,
-        };
-      } catch (error: any) {
-        if (error?.code !== 11000) {
-          // Any other database error is not recoverable here.
-          logError("DATABASE CREATE ERROR", error, {
-            operation: "createShortUrl",
-            model: "Link",
-            code,
-            attempt,
-            cleanedUrl,
-            expiresAt: expiresAt.toISOString(),
-          });
-
-          throw error;
-        }
-
-        const collidingIndex = getCollidingIndex(error);
-
-        // Lost the dedupe race: another request inserted this destination
-        // first. Adopt its row rather than creating a duplicate record.
-        if (
-          collidingIndex === "urlHash" ||
-          collidingIndex?.includes("urlHash")
-        ) {
-          const winner = await findLinkByUrlHash(urlHash);
-
-          // The winner may have been TTL-deleted in the gap → retry insert.
-          if (winner) {
-            return await adoptExistingLink(winner, cleanedUrl);
-          }
-
-          continue;
-        }
-
-        // Duplicate short-code collision → try the next attempt.
-        logError("SHORT CODE COLLISION", error, {
+      return {
+        code: link.code,
+        originalUrl: cleanedUrl,
+        shortUrl,
+        expiresAt: link.expiresAt,
+        created: true,
+      };
+    } catch (error: any) {
+      if (error?.code !== 11000) {
+        // Any other database error is not recoverable here.
+        logError("DATABASE CREATE ERROR", error, {
           operation: "createShortUrl",
+          model: "Link",
           code,
           attempt,
-          cleanedUrl,
+          cleanedUrl: redactUrl(cleanedUrl),
+          expiresAt: expiresAt.toISOString(),
         });
+
+        throw error;
+      }
+
+      const collidingIndex = getCollidingIndex(error);
+
+      // Lost the dedupe race: another request inserted this destination
+      // first. Adopt its row rather than creating a duplicate record.
+      if (
+        collidingIndex === "urlHash" ||
+        collidingIndex?.includes("urlHash")
+      ) {
+        const winner = await findLinkByUrlHash(urlHash);
+
+        // The winner may have been TTL-deleted in the gap → retry insert.
+        if (winner) {
+          const adopted = await adoptExistingLink(
+            winner,
+            cleanedUrl
+          );
+
+          if (adopted) {
+            return adopted;
+          }
+        }
 
         continue;
       }
+
+      // Duplicate short-code collision → try the next attempt.
+      logError("SHORT CODE COLLISION", error, {
+        operation: "createShortUrl",
+        code,
+        attempt,
+        cleanedUrl: redactUrl(cleanedUrl),
+      });
+
+      continue;
     }
-
-    throw new Error(
-      `Unable to generate a unique short code after ${env.MAX_CODE_ATTEMPTS} attempts`
-    );
-  } catch (error: any) {
-    logError("CREATE SHORT URL FAILED", error, {
-      inputUrl,
-    });
-
-    // Re-throw so the controller can translate it into an HTTP response.
-    throw error;
   }
+
+  throw new Error(
+    `Unable to generate a unique short code after ${env.MAX_CODE_ATTEMPTS} attempts`
+  );
 };

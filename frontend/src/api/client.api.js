@@ -6,6 +6,7 @@
  */
 
 const API_URL = import.meta.env.VITE_API_URL;
+const REQUEST_TIMEOUT_MS = 15_000;
 
 /** Error raised for non-2xx responses, carrying status and response body. */
 export class ApiError extends Error {
@@ -19,30 +20,64 @@ export class ApiError extends Error {
 /**
  * Perform an API request against `VITE_API_URL`.
  *
- * Sets `Content-Type: application/json` by default (override via
- * `options.headers`) and resolves with the parsed JSON body. Throws an
- * `ApiError` when the response is not OK.
+ * Sets `Content-Type: application/json` only when a body is present (GETs with
+ * no body should stay simple requests), applies a timeout, and resolves with
+ * the parsed JSON body. Throws an `ApiError` when the response is not OK.
  */
 export const api = async (endpoint, options = {}) => {
-  const response = await fetch(`${API_URL}${endpoint}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  });
+  if (!API_URL) {
+    throw new Error(
+      "VITE_API_URL is not configured. Set it to the backend API base URL.",
+    );
+  }
 
-  let data;
+  const controller = new AbortController();
+  const timeout = setTimeout(
+    () => controller.abort(),
+    REQUEST_TIMEOUT_MS,
+  );
+
+  const abortFromCaller = () => controller.abort();
+
+  if (options.signal?.aborted) {
+    controller.abort();
+  } else {
+    options.signal?.addEventListener("abort", abortFromCaller, {
+      once: true,
+    });
+  }
+
+  const headers = new Headers(options.headers);
+
+  if (
+    options.body !== undefined &&
+    !headers.has("Content-Type")
+  ) {
+    headers.set("Content-Type", "application/json");
+  }
 
   try {
-    data = await response.json();
-  } catch {
-    // Response had no JSON body.
-  }
+    const response = await fetch(`${API_URL}${endpoint}`, {
+      ...options,
+      headers,
+      signal: controller.signal,
+    });
 
-  if (!response.ok) {
-    throw new ApiError(response.status, data);
-  }
+    let data;
 
-  return data;
+    try {
+      data = await response.json();
+    } catch {
+      // Response had no JSON body.
+    }
+
+    if (!response.ok) {
+      throw new ApiError(response.status, data);
+    }
+
+    return data;
+  } finally {
+    clearTimeout(timeout);
+    options.signal?.removeEventListener("abort", abortFromCaller);
+  }
 };
