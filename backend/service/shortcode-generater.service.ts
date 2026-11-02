@@ -5,36 +5,28 @@ const BASE62 = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 /**
  * Random code length within the configured [MIN, MAX] range.
+ *
+ * Uses the CSPRNG so the length cannot be predicted or biased.
  */
 export const getCodeLength = (): number => {
-  const min = env.MIN_CODE_LENGTH;
-  const max = env.MAX_CODE_LENGTH;
-
-  const range = max - min + 1;
-
-  return min + Math.floor(Math.random() * range);
+  return crypto.randomInt(
+    env.MIN_CODE_LENGTH,
+    env.MAX_CODE_LENGTH + 1
+  );
 };
 
-export const generateCode = (
-  urlHash: string,
-  attempt: number,
-  codeLength: number
-): string => {
-  const digest = crypto
-    .createHash("sha256")
-    .update(`${urlHash}:${attempt}`)
-    .digest();
-
-  let number = digest.readUIntBE(0, 6);
-
+/**
+ * Generate a cryptographically random short code.
+ *
+ * Codes must not be derived from the destination URL: doing so makes them
+ * predictable and lets anyone who knows a URL compute its short link without
+ * calling the API. Dedupe is handled by `urlHash`, so randomness is safe.
+ */
+export const generateCode = (codeLength: number): string => {
   let code = "";
 
   for (let i = 0; i < codeLength; i++) {
-    code += BASE62[number % BASE62.length];
-
-    number = Math.floor(
-      number / BASE62.length
-    );
+    code += BASE62[crypto.randomInt(BASE62.length)]!;
   }
 
   return code;

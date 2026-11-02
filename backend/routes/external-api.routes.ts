@@ -6,6 +6,7 @@ import { linkRateLimitMiddleware } from "../middleware/rate-limit.middleware.js"
 const router = Router();
 
 // Authenticated shorten endpoint (quota enforced before creating the link).
+// Rate-limit before auth so invalid keys cannot be brute-forced cheaply.
 router.post(
   "/urls",
   linkRateLimitMiddleware,

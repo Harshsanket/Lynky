@@ -42,6 +42,21 @@ const API_SECRET_ALPHABET =
   "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
 /**
+ * A valid secret is exactly `env.API_KEY_LENGTH` (45) base64url characters.
+ * Reject malformed keys before hitting the database so the backend accepts
+ * the same shape the frontend sends.
+ */
+const API_SECRET_PATTERN = new RegExp(
+  `^[A-Za-z0-9_-]{${env.API_KEY_LENGTH}}$`
+);
+
+export const isValidApiSecret = (
+  secret: string
+): boolean => {
+  return API_SECRET_PATTERN.test(secret);
+};
+
+/**
  * Generate a random API secret of exactly `env.API_KEY_LENGTH` characters
  * drawn from the base64url alphabet.
  *
@@ -112,6 +127,10 @@ const trimUsageHistory = (
 export const findAndRolloverApiKey = async (
   secret: string
 ) => {
+  if (!isValidApiSecret(secret)) {
+    throw new ApiKeyError("Invalid API secret.", 401);
+  }
+
   const key = await ApiKey.findOne({
     keyHash: hashApiSecret(secret),
   });

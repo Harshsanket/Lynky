@@ -141,11 +141,7 @@ export const createShortUrlFromPrepared = async ({
     attempt < env.MAX_CODE_ATTEMPTS;
     attempt++
   ) {
-    const code = generateCode(
-      urlHash,
-      attempt,
-      getCodeLength()
-    );
+    const code = generateCode(getCodeLength());
 
     try {
       const link = await Link.create({

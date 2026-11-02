@@ -51,7 +51,9 @@ export const redirectToOriginalUrl = async (
     // Defense-in-depth: never redirect to anything that is not a clean
     // HTTP(S) URL, even if a stored record was tampered with.
     try {
-      assertNotOwnLink(validateUrl(originalUrl));
+      assertNotOwnLink(
+        validateUrl(originalUrl, { enforceMaxLength: false })
+      );
     } catch (error) {
       logError("REDIRECT DESTINATION REJECTED", error, {
         operation: "redirectToOriginalUrl",

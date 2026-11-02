@@ -14,7 +14,15 @@ export default function ScrollToHash() {
   useEffect(() => {
     if (!hash) return;
 
-    const id = decodeURIComponent(hash.slice(1));
+    const rawId = hash.slice(1);
+
+    let id = rawId;
+
+    try {
+      id = decodeURIComponent(rawId);
+    } catch {
+      // Malformed percent-encoding (e.g. `#%`) should not crash the app.
+    }
 
     requestAnimationFrame(() => {
       document.getElementById(id)?.scrollIntoView({
