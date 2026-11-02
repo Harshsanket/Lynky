@@ -25,8 +25,8 @@ const keyGenerator = (req: Request): string => {
 
 /** Global throttle applied to every request (anti-DoS backstop). */
 export const rateLimitMiddleware = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  limit: 1000,
+  windowMs: 60 * 60 * 1000,
+  limit: 10_000,
 
   keyGenerator,
 
