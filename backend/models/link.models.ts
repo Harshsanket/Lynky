@@ -46,8 +46,6 @@ const linkSchema = new Schema<ILink>(
     codeHash: {
       type: String,
       required: true,
-      unique: true,
-      index: true,
       trim: true,
     },
 
@@ -92,6 +90,20 @@ const linkSchema = new Schema<ILink>(
   },
   {
     timestamps: true,
+  }
+);
+
+/*
+ * Legacy rows may predate `codeHash`. Exclude non-string values from the
+ * unique index so the index can be built before every legacy row has been
+ * backfilled by its first redirect.
+ */
+linkSchema.index(
+  { codeHash: 1 },
+  {
+    name: "codeHash_1",
+    unique: true,
+    partialFilterExpression: { codeHash: { $type: "string" } },
   }
 );
 

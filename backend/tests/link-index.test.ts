@@ -38,11 +38,26 @@ after(async () => {
   await mongoose.disconnect();
 });
 
-run("repairs a non-sparse legacy code index", async () => {
+run("repairs legacy indexes before create traffic starts", async () => {
+  const expiresAt = new Date(Date.now() + 60_000);
+  const base = {
+    originalUrl: "ciphertext",
+    expiresAt,
+    createdAt: new Date(),
+    visitCount: 0,
+    lastVisitedAt: null,
+  };
+
   await Link.collection.createIndex(
     { code: 1 },
     { name: "legacy_code_unique", unique: true }
   );
+
+  await Link.collection.insertMany([
+    { ...base, code: "legacyA", urlHash: "hash-a" },
+    { ...base, code: "legacyB", urlHash: "hash-b" },
+    { ...base, urlHash: "hash-c" },
+  ]);
 
   await assertLinkIndexesReady();
 
@@ -50,7 +65,14 @@ run("repairs a non-sparse legacy code index", async () => {
   const codeIndex = indexes.find(
     (index) => index.key && (index.key as Record<string, unknown>).code === 1
   );
+  const codeHashIndex = indexes.find(
+    (index) => index.name === "codeHash_1"
+  );
 
   assert.equal(codeIndex?.name, "code_1");
   assert.equal(codeIndex?.sparse, true);
+  assert.equal(codeHashIndex?.unique, true);
+  assert.deepEqual(codeHashIndex?.partialFilterExpression, {
+    codeHash: { $type: "string" },
+  });
 });
