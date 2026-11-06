@@ -6,7 +6,7 @@ import { env } from "./config/env.js";
 import { validateUrl } from "../service/url-validator.service.js";
 import { initializeEngines } from "../service/engines/runtime.js";
 import { initializeCache } from "../service/redis.client.js";
-import { assertLinkIndexesReady } from "../service/link-index.service.js";
+import { ensureLinkIndexesReady } from "../service/link-index.service.js";
 import { startTelemetrySampler } from "../service/telemetry.service.js";
 import { logError, logInfo } from "../service/logger.js";
 
@@ -96,7 +96,7 @@ const startServer = async () => {
 
   await initializeCache();
   await connectDatabase();
-  await assertLinkIndexesReady();
+  await ensureLinkIndexesReady();
 
   startTelemetrySampler();
 

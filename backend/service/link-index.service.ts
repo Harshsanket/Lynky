@@ -70,3 +70,18 @@ export const assertLinkIndexesReady = async (): Promise<void> => {
     );
   }
 };
+
+let indexesReady: Promise<void> | null = null;
+
+/**
+ * Run the index check once per process. Vercel's Express entrypoint does not
+ * execute `server.ts`, so the database middleware calls this before routes.
+ */
+export const ensureLinkIndexesReady = (): Promise<void> => {
+  indexesReady ??= assertLinkIndexesReady().catch((error) => {
+    indexesReady = null;
+    throw error;
+  });
+
+  return indexesReady;
+};
