@@ -5,7 +5,6 @@ import {
   linkRateLimitMiddleware,
   usageRateLimitMiddleware,
 } from "../middleware/rate-limit.middleware.js";
-import { botIdMiddleware } from "../middleware/botid.middleware.js";
 
 const router = Router();
 
@@ -21,7 +20,6 @@ router.post(
 // Read-only usage endpoint (auth only, no quota consumed).
 router.get(
   "/stats/usage",
-  botIdMiddleware,
   usageRateLimitMiddleware,
   apiKeyAuthOnlyMiddleware,
   readApiKeyUsage
