@@ -1,5 +1,4 @@
 import type { Request, Response } from "express";
-import { env } from "../src/config/env.js";
 import {
   ErrorLog,
   MetricsDaily,
@@ -257,7 +256,6 @@ export const flushMetricsForTests = async (epoch: number): Promise<void> => {
 };
 
 const recordErrorLog = async (
-  req: Request,
   res: Response,
   route: string
 ): Promise<void> => {
@@ -355,7 +353,7 @@ export const recordRequestMetrics = async (
     });
   }
 
-  await recordErrorLog(req, res, route);
+  await recordErrorLog(res, route);
   await flushOldMetrics();
 };
 

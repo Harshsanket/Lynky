@@ -7,6 +7,8 @@ process.env.FRONTEND_URL = "https://lynky.test";
 process.env.PUBLIC_URL = "https://lynky.test";
 process.env.ENCRYPTION_KEY = "test-encryption-key-0123456789abcdef";
 process.env.EXPIRATION_DAYS = "30";
+process.env.UPSTASH_REDIS_REST_URL = "https://upstash.test";
+process.env.UPSTASH_REDIS_REST_TOKEN = "test-token";
 
 const { PublicError, getPublicErrorMessage } = await import(
   "../service/public-error.service.js"

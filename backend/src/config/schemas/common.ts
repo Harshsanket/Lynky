@@ -26,18 +26,6 @@ export const hostHintSchema = z
   .max(253)
   .refine(isValidHostHint, "must be a valid host hint");
 
-/** Compile a regex, returning an error message instead of throwing. */
-export const compileRegex = (
-  pattern: string,
-  flags = "i"
-): { regex: RegExp } | { error: string } => {
-  try {
-    return { regex: new RegExp(pattern, flags) };
-  } catch (error) {
-    return { error: (error as Error).message };
-  }
-};
-
 /**
  * Classic catastrophic-backtracking shape: a single-token group (`(a+)`,
  * `(.*)`, `([a-z]+)`) repeated by a greedy quantifier. Upstream ClearURLs
@@ -80,8 +68,6 @@ export const hasCaptureGroup = (pattern: string): boolean =>
 
 export const nonEmptyString = z.string().min(1);
 
-export const stringArray = z.array(nonEmptyString);
-
 /** Keys present in an object that a schema does not know about. */
 export const unknownKeys = (
   value: Record<string, unknown>,
@@ -103,18 +89,6 @@ export const KNOWN_TRACKER_KEYS = [
 export const KNOWN_PROVIDERS_KEYS = [
   "schemaVersion",
   "providers",
-] as const;
-
-export const KNOWN_PROVIDER_KEYS = [
-  "id",
-  "urlPattern",
-  "hostHints",
-  "completeProvider",
-  "rules",
-  "referralMarketing",
-  "exceptions",
-  "redirections",
-  "rawRules",
 ] as const;
 
 export const KNOWN_OVERRIDES_KEYS = [
@@ -157,15 +131,4 @@ export const KNOWN_POLICY_KEYS = [
 export const KNOWN_BLOCKLIST_SOURCES_KEYS = [
   "schemaVersion",
   "sources",
-] as const;
-
-export const KNOWN_BLOCKLIST_SOURCE_KEYS = [
-  "file",
-  "format",
-  "required",
-  "minEntries",
-  "sourceUrl",
-  "license",
-  "fetchedAt",
-  "sha256",
 ] as const;

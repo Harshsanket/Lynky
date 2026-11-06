@@ -516,8 +516,3 @@ export const loadCompiledArtifacts = (
     artifactHashValid,
   };
 };
-
-/** Plan name for the cold-start artifact assertion/loader. */
-export const assertCompiledArtifact = (
-  dir?: string
-): LoadedArtifacts => loadCompiledArtifacts(dir);

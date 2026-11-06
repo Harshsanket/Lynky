@@ -15,11 +15,3 @@ export const runWithRequestContext = <T>(
 
 export const getRequestContext = (): RequestContext | undefined =>
   storage.getStore();
-
-export const setRequestRoute = (route: string): void => {
-  const context = storage.getStore();
-
-  if (context) {
-    context.route = route;
-  }
-};

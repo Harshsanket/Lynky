@@ -33,7 +33,8 @@ export interface AppEnv {
   ALLOW_PRIVATE_SUFFIXES: boolean;
   BLOCKLIST_FAILURE_MODE: "open" | "closed";
   CONFIG_FULL_RUNTIME_VALIDATION: boolean;
-  REDIS_URL: string | undefined;
+  UPSTASH_REDIS_REST_URL: string | undefined;
+  UPSTASH_REDIS_REST_TOKEN: string | undefined;
   GLOBAL_RATE_LIMIT_PER_HOUR: number;
   LINK_RATE_LIMIT_PER_15_MIN: number;
   SERVER_STAGE_TIMINGS: boolean;
@@ -323,23 +324,54 @@ export const loadEnv = (
   );
 
   /* ------------------------------------------------------------------------ */
-  /*  Redis cache / click accounting / global limit                           */
+  /*  Upstash Redis / click accounting / global limit                         */
   /* ------------------------------------------------------------------------ */
 
-  let REDIS_URL: string | undefined;
+  let UPSTASH_REDIS_REST_URL: string | undefined;
+  let UPSTASH_REDIS_REST_TOKEN: string | undefined;
 
-  if (source.REDIS_URL?.trim()) {
+  if (source.UPSTASH_REDIS_REST_URL?.trim()) {
     try {
-      const parsed = new URL(source.REDIS_URL.trim());
+      const parsed = new URL(source.UPSTASH_REDIS_REST_URL.trim());
 
-      if (parsed.protocol !== "redis:" && parsed.protocol !== "rediss:") {
-        throw new Error("not a redis URL");
+      if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+        throw new Error("not an http(s) URL");
       }
 
-      REDIS_URL = parsed.toString();
+      if (
+        parsed.username ||
+        parsed.password ||
+        parsed.search ||
+        parsed.hash
+      ) {
+        throw new Error("not an origin");
+      }
+
+      UPSTASH_REDIS_REST_URL = parsed.origin;
     } catch {
-      throw new Error("REDIS_URL must be a valid redis:// or rediss:// URL");
+      throw new Error(
+        "UPSTASH_REDIS_REST_URL must be a valid http(s) URL without credentials, query, or fragment"
+      );
     }
+  }
+
+  if (source.UPSTASH_REDIS_REST_TOKEN?.trim()) {
+    UPSTASH_REDIS_REST_TOKEN = source.UPSTASH_REDIS_REST_TOKEN.trim();
+  }
+
+  if (
+    Boolean(UPSTASH_REDIS_REST_URL) !==
+    Boolean(UPSTASH_REDIS_REST_TOKEN)
+  ) {
+    throw new Error(
+      "UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN must be set together"
+    );
+  }
+
+  if (isProduction && !UPSTASH_REDIS_REST_URL) {
+    throw new Error(
+      "UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are required in production"
+    );
   }
 
   const integerSetting = (
@@ -481,7 +513,8 @@ export const loadEnv = (
     ALLOW_PRIVATE_SUFFIXES,
     BLOCKLIST_FAILURE_MODE: BLOCKLIST_FAILURE_MODE as "open" | "closed",
     CONFIG_FULL_RUNTIME_VALIDATION,
-    REDIS_URL,
+    UPSTASH_REDIS_REST_URL,
+    UPSTASH_REDIS_REST_TOKEN,
     GLOBAL_RATE_LIMIT_PER_HOUR,
     LINK_RATE_LIMIT_PER_15_MIN,
     SERVER_STAGE_TIMINGS,

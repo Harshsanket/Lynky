@@ -1,8 +1,5 @@
 import { logInfo, logWarn, setLogVersions } from "../logger.js";
-import {
-  loadCompiledArtifacts,
-  resolveCompiledDir,
-} from "../../src/config/artifacts.js";
+import { loadCompiledArtifacts } from "../../src/config/artifacts.js";
 import type { LoadedArtifacts } from "../../src/config/artifact-types.js";
 import { AllowlistEngine } from "./allowlist.engine.js";
 import {
@@ -89,16 +86,3 @@ export const initializeEngines = (): EngineRuntime => {
 
   return runtime;
 };
-
-export const getCleanerOrchestrator = (): CleanerOrchestrator =>
-  getEngineRuntime().orchestrator;
-
-export const getActiveBlocklistEngine = (): BlocklistEngine =>
-  getEngineRuntime().blocklist;
-
-export const resetEngineRuntimeForTests = (): void => {
-  cached = undefined;
-};
-
-export const getCompiledDirForDiagnostics = (): string | null =>
-  resolveCompiledDir() ?? null;

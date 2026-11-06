@@ -5,7 +5,7 @@ import { connectDatabase } from "../database/index.database.js";
 import { env } from "./config/env.js";
 import { validateUrl } from "../service/url-validator.service.js";
 import { initializeEngines } from "../service/engines/runtime.js";
-import { disconnectCache, initializeCache } from "../service/redis.client.js";
+import { initializeCache } from "../service/redis.client.js";
 import { assertLinkIndexesReady } from "../service/link-index.service.js";
 import { startTelemetrySampler } from "../service/telemetry.service.js";
 import { logError, logInfo } from "../service/logger.js";
@@ -71,7 +71,7 @@ const logEffectiveConfig = (): void => {
     maxUrlLength: env.MAX_URL_LENGTH,
     apiKeyLength: env.API_KEY_LENGTH,
     apiKeyMonthlyLimit: env.API_KEY_MONTHLY_LIMIT,
-    redisConfigured: Boolean(env.REDIS_URL),
+    upstashRedisConfigured: Boolean(env.UPSTASH_REDIS_REST_URL),
     globalRateLimitPerHour: env.GLOBAL_RATE_LIMIT_PER_HOUR,
     linkRateLimitPer15Min: env.LINK_RATE_LIMIT_PER_15_MIN,
     serverStageTimings: env.SERVER_STAGE_TIMINGS,
@@ -136,8 +136,6 @@ const startServer = async () => {
           errorCode: "mongo_disconnect_failed",
         });
       }
-
-      await disconnectCache();
 
       process.exit(error ? 1 : 0);
     });

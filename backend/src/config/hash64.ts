@@ -26,11 +26,3 @@ export const hashKey = (key: string, seed: number): KeyHash => {
     hi: digest.readUInt32LE(12),
   };
 };
-
-export const hashKeyString = (key: string, seed: number): string => {
-  const hash = hashKey(key, seed);
-
-  return `${hash.lo.toString(16).padStart(8, "0")}${hash.hi
-    .toString(16)
-    .padStart(8, "0")}`;
-};

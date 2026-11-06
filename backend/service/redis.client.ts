@@ -1,11 +1,12 @@
-import { Redis } from "ioredis";
+import type { Redis } from "@upstash/redis";
 import { env } from "../src/config/env.js";
-import { logInfo, logWarn } from "./logger.js";
+import { getUpstashRedis } from "../lib/redis.js";
+import { logInfo } from "./logger.js";
 
 /**
- * Small cache-store contract shared by the Redis implementation and the
- * in-memory fallback. Redis is cache-only (Mongo remains the source of truth),
- * so every operation is allowed to fail and fall back without breaking a
+ * Small cache-store contract shared by the Upstash implementation and the
+ * in-memory development/test store. Redis is cache-only (Mongo remains the
+ * source of truth), so every operation is allowed to fail without breaking a
  * request.
  */
 export interface CacheStore {
@@ -28,23 +29,27 @@ interface MemoryEntry {
   value: string | Map<string, string> | Set<string>;
 }
 
+const KEY_PREFIX =
+  env.NODE_ENV === "test" ? "lynky:test:" : "lynky:";
+
+const prefixed = (key: string): string => `${KEY_PREFIX}${key}`;
+
 /**
- * Process-local fallback. It is used when Redis is not configured (local dev)
- * or temporarily unavailable. It intentionally behaves like a simple cache:
- * restarting the process loses pending deltas.
+ * Process-local store used for development and tests. A restart loses all
+ * entries; that is intentional because development must not touch Upstash.
  */
 export class MemoryCacheStore implements CacheStore {
   private readonly entries = new Map<string, MemoryEntry>();
 
   private getEntry(key: string): MemoryEntry | null {
-    const entry = this.entries.get(key);
+    const entry = this.entries.get(prefixed(key));
 
     if (!entry) {
       return null;
     }
 
     if (entry.expiresAt !== null && entry.expiresAt <= Date.now()) {
-      this.entries.delete(key);
+      this.entries.delete(prefixed(key));
       return null;
     }
 
@@ -56,7 +61,7 @@ export class MemoryCacheStore implements CacheStore {
     value: MemoryEntry["value"],
     ttlSeconds?: number
   ): void {
-    this.entries.set(key, {
+    this.entries.set(prefixed(key), {
       value,
       expiresAt:
         ttlSeconds === undefined
@@ -76,7 +81,7 @@ export class MemoryCacheStore implements CacheStore {
   }
 
   async del(key: string): Promise<void> {
-    this.entries.delete(key);
+    this.entries.delete(prefixed(key));
   }
 
   async incrBy(
@@ -165,7 +170,7 @@ export class MemoryCacheStore implements CacheStore {
     }
 
     if (entry.value.size === 0) {
-      this.entries.delete(key);
+      this.entries.delete(prefixed(key));
     }
   }
 
@@ -199,118 +204,34 @@ export class MemoryCacheStore implements CacheStore {
     entry.value.delete(member);
 
     if (entry.value.size === 0) {
-      this.entries.delete(key);
+      this.entries.delete(prefixed(key));
     }
   }
 }
 
-const KEY_PREFIX =
-  env.NODE_ENV === "test" ? "lynky:test:" : "lynky:";
-
-const prefixed = (key: string): string => `${KEY_PREFIX}${key}`;
-
 /**
- * Redis-backed store with a process-local fallback. A Redis error degrades the
- * store for 30 seconds so an outage does not add a timeout to every request.
+ * Upstash REST store. Disabling automatic deserialization keeps all values as
+ * the strings the cache contract expects; HGETALL therefore returns a flat
+ * [field, value, ...] array that is normalized below.
  */
-class ResilientCacheStore implements CacheStore {
-  private readonly memory = new MemoryCacheStore();
-  private readonly redis: Redis | null;
-  private degradedUntil = 0;
-  private lastErrorLogAt = 0;
-
-  constructor() {
-    if (!env.REDIS_URL) {
-      this.redis = null;
-      return;
-    }
-
-    this.redis = new Redis(env.REDIS_URL, {
-      lazyConnect: true,
-      connectTimeout: 1000,
-      commandTimeout: 100,
-      maxRetriesPerRequest: 1,
-      retryStrategy: (times) => Math.min(times * 200, 2000),
-      enableReadyCheck: true,
-      enableOfflineQueue: true,
-    });
-
-    this.redis.on("error", (error) => {
-      const now = Date.now();
-
-      if (now - this.lastErrorLogAt > 30_000) {
-        this.lastErrorLogAt = now;
-        logWarn("redis_unavailable", {
-          errorCode: "redis_unavailable",
-          message: (error as Error).message,
-        });
-      }
-    });
-  }
-
-  private canUseRedis(): boolean {
-    return (
-      this.redis !== null &&
-      Date.now() >= this.degradedUntil &&
-      this.redis.status !== "end"
-    );
-  }
-
-  private markDegraded(error: unknown): void {
-    this.degradedUntil = Date.now() + 30_000;
-
-    const now = Date.now();
-
-    if (now - this.lastErrorLogAt > 30_000) {
-      this.lastErrorLogAt = now;
-      logWarn("redis_fallback", {
-        errorCode: "redis_unavailable",
-        message: (error as Error)?.message ?? String(error),
-      });
-    }
-  }
-
-  private async run<T>(
-    operation: (client: Redis) => Promise<T>,
-    fallback: () => Promise<T>
-  ): Promise<T> {
-    if (!this.canUseRedis()) {
-      return fallback();
-    }
-
-    try {
-      return await operation(this.redis as Redis);
-    } catch (error) {
-      this.markDegraded(error);
-      return fallback();
-    }
-  }
+class UpstashCacheStore implements CacheStore {
+  constructor(private readonly client: Redis) {}
 
   async get(key: string): Promise<string | null> {
-    return this.run(
-      (client) => client.get(prefixed(key)),
-      () => this.memory.get(prefixed(key))
-    );
+    return (await this.client.get<string>(prefixed(key))) ?? null;
   }
 
   async set(key: string, value: string, ttlSeconds?: number): Promise<void> {
-    return this.run(
-      async (client) => {
-        if (ttlSeconds === undefined) {
-          await client.set(prefixed(key), value);
-        } else {
-          await client.set(prefixed(key), value, "EX", ttlSeconds);
-        }
-      },
-      () => this.memory.set(prefixed(key), value, ttlSeconds)
-    );
+    if (ttlSeconds === undefined) {
+      await this.client.set(prefixed(key), value);
+      return;
+    }
+
+    await this.client.set(prefixed(key), value, { ex: ttlSeconds });
   }
 
   async del(key: string): Promise<void> {
-    return this.run(
-      (client) => client.del(prefixed(key)).then(() => undefined),
-      () => this.memory.del(prefixed(key))
-    );
+    await this.client.del(prefixed(key));
   }
 
   async incrBy(
@@ -318,32 +239,46 @@ class ResilientCacheStore implements CacheStore {
     delta: number,
     ttlSeconds?: number
   ): Promise<number> {
-    return this.run(
-      async (client) => {
-        const value = await client.incrby(prefixed(key), delta);
+    const value = await this.client.incrby(prefixed(key), delta);
 
-        if (value === delta && ttlSeconds !== undefined) {
-          await client.expire(prefixed(key), ttlSeconds);
-        }
+    if (value === delta && ttlSeconds !== undefined) {
+      await this.client.expire(prefixed(key), ttlSeconds);
+    }
 
-        return value;
-      },
-      () => this.memory.incrBy(prefixed(key), delta, ttlSeconds)
-    );
+    return value;
   }
 
   async expire(key: string, ttlSeconds: number): Promise<void> {
-    return this.run(
-      (client) => client.expire(prefixed(key), ttlSeconds).then(() => undefined),
-      () => this.memory.expire(prefixed(key), ttlSeconds)
-    );
+    await this.client.expire(prefixed(key), ttlSeconds);
   }
 
   async hGetAll(key: string): Promise<Record<string, string>> {
-    return this.run(
-      (client) => client.hgetall(prefixed(key)),
-      () => this.memory.hGetAll(prefixed(key))
-    );
+    const raw = (await this.client.hgetall(prefixed(key))) as unknown;
+
+    if (Array.isArray(raw)) {
+      const result: Record<string, string> = {};
+
+      for (let index = 0; index < raw.length; index += 2) {
+        const field = raw[index];
+        const value = raw[index + 1];
+
+        if (typeof field === "string" && typeof value === "string") {
+          result[field] = value;
+        }
+      }
+
+      return result;
+    }
+
+    if (raw && typeof raw === "object") {
+      return Object.fromEntries(
+        Object.entries(raw as Record<string, unknown>).map(
+          ([field, value]) => [field, String(value)]
+        )
+      );
+    }
+
+    return {};
   }
 
   async hIncrBy(
@@ -351,130 +286,82 @@ class ResilientCacheStore implements CacheStore {
     field: string,
     delta: number
   ): Promise<number> {
-    return this.run(
-      (client) =>
-        client.hincrby(prefixed(key), field, delta),
-      () => this.memory.hIncrBy(prefixed(key), field, delta)
-    );
+    return this.client.hincrby(prefixed(key), field, delta);
   }
 
   async hSet(key: string, field: string, value: string): Promise<void> {
-    return this.run(
-      (client) =>
-        client.hset(prefixed(key), field, value).then(() => undefined),
-      () => this.memory.hSet(prefixed(key), field, value)
-    );
+    await this.client.hset(prefixed(key), { [field]: value });
   }
 
   async hDel(key: string, ...fields: string[]): Promise<void> {
-    return this.run(
-      (client) =>
-        client.hdel(prefixed(key), ...fields).then(() => undefined),
-      () => this.memory.hDel(prefixed(key), ...fields)
-    );
+    await this.client.hdel(prefixed(key), ...fields);
   }
 
   async sAdd(key: string, member: string): Promise<void> {
-    return this.run(
-      (client) =>
-        client.sadd(prefixed(key), member).then(() => undefined),
-      () => this.memory.sAdd(prefixed(key), member)
-    );
+    await this.client.sadd(prefixed(key), member);
   }
 
   async sMembers(key: string): Promise<string[]> {
-    return this.run(
-      (client) => client.smembers(prefixed(key)),
-      () => this.memory.sMembers(prefixed(key))
-    );
+    return this.client.smembers(prefixed(key));
   }
 
   async sRem(key: string, member: string): Promise<void> {
-    return this.run(
-      (client) =>
-        client.srem(prefixed(key), member).then(() => undefined),
-      () => this.memory.sRem(prefixed(key), member)
-    );
+    await this.client.srem(prefixed(key), member);
   }
 
-  status(): { configured: boolean; available: boolean; mode: "redis" | "memory" } {
-    const configured = this.redis !== null;
-    const available =
-      configured &&
-      this.redis?.status === "ready" &&
-      Date.now() >= this.degradedUntil;
-
-    return {
-      configured,
-      available,
-      mode: available ? "redis" : "memory",
-    };
-  }
-
-  async ping(): Promise<boolean> {
-    if (!this.redis) {
-      return false;
-    }
-
-    try {
-      await this.redis.ping();
-      return true;
-    } catch (error) {
-      this.markDegraded(error);
-      return false;
-    }
-  }
-
-  async disconnect(): Promise<void> {
-    if (this.redis) {
-      await this.redis.quit().catch(() => undefined);
-    }
+  async ping(): Promise<void> {
+    await this.client.ping();
   }
 }
 
-let store: CacheStore = new ResilientCacheStore();
+let store: CacheStore | null = null;
 
-export const getCacheStore = (): CacheStore => store;
+const createCacheStore = (): CacheStore => {
+  if (!env.isProduction) {
+    return new MemoryCacheStore();
+  }
+
+  const client = getUpstashRedis();
+
+  if (!client) {
+    throw new Error(
+      "Upstash Redis is required in production. Set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN."
+    );
+  }
+
+  return new UpstashCacheStore(client);
+};
+
+export const getCacheStore = (): CacheStore => {
+  store ??= createCacheStore();
+  return store;
+};
 
 export const getCacheStatus = (): {
   configured: boolean;
   available: boolean;
   mode: "redis" | "memory";
 } => {
-  if (store instanceof ResilientCacheStore) {
-    return store.status();
+  if (store instanceof UpstashCacheStore) {
+    return { configured: true, available: true, mode: "redis" };
   }
 
   return { configured: false, available: true, mode: "memory" };
 };
 
 export const initializeCache = async (): Promise<void> => {
-  if (!(store instanceof ResilientCacheStore)) {
+  const cache = getCacheStore();
+
+  if (cache instanceof UpstashCacheStore) {
+    await cache.ping();
+    logInfo("upstash_configured", { mode: "upstash" });
     return;
   }
 
-  if (!env.REDIS_URL) {
-    logInfo("redis_not_configured", { mode: "memory" });
-    return;
-  }
-
-  logInfo("redis_configured", {
-    configured: true,
-    lazyConnect: true,
-  });
-};
-
-export const disconnectCache = async (): Promise<void> => {
-  if (store instanceof ResilientCacheStore) {
-    await store.disconnect();
-  }
+  logInfo("cache_memory_mode", { mode: "memory" });
 };
 
 /** Test hook: replace the singleton with an in-memory store. */
 export const setCacheStoreForTests = (next: CacheStore): void => {
   store = next;
-};
-
-export const resetCacheStoreForTests = (): void => {
-  store = new ResilientCacheStore();
 };

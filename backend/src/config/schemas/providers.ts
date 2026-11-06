@@ -53,6 +53,4 @@ export const overridesDatasetSchema = z
   .loose();
 
 export type Provider = z.infer<typeof providerSchema>;
-export type ProvidersDataset = z.infer<typeof providersDatasetSchema>;
 export type Override = z.infer<typeof overrideSchema>;
-export type OverridesDataset = z.infer<typeof overridesDatasetSchema>;

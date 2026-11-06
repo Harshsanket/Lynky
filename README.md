@@ -10,12 +10,12 @@ Lynky cleans known tracking parameters from a URL before it is shared, shortens 
 - Node.js 26+
 - npm 10+
 - MongoDB 7+
-- Redis 6.2+
-- Local `mongod` and `redis-server` for development
+- Upstash Redis credentials for production (development uses the in-memory cache)
+- Local `mongod` for development
 
 ## Getting Started
 
-Start MongoDB and Redis, then install and configure the backend:
+Start MongoDB, then install and configure the backend:
 
 ```sh
 cd backend
@@ -64,7 +64,8 @@ Backend values mirror `backend/.env.example`; frontend values mirror `frontend/.
 | `ALLOW_PRIVATE_SUFFIXES` | `false` | Allow hosts on private public-suffix entries such as `*.eu.org` |
 | `BLOCKLIST_FAILURE_MODE` | `open` | `open` continues creates with degraded readiness; `closed` rejects them |
 | `CONFIG_FULL_RUNTIME_VALIDATION` | `false` | Development-only full artifact validation |
-| `REDIS_URL` | Optional Redis cache URL; memory fallback when unset |
+| `UPSTASH_REDIS_REST_URL` | `https://your-database.upstash.io` | Upstash REST URL; required in production, unused in development |
+| `UPSTASH_REDIS_REST_TOKEN` | `your-token-here` | Upstash REST token; required in production, unused in development |
 
 ### Limits, caching, and clicks
 | Variable | Example | Meaning |
@@ -137,7 +138,7 @@ Create-time screening uses HaGeZi wildcard lists (light, NSFW, gambling, URL-sho
 
 ### Shortening, redirects, and limits
 
-A repeated destination is adopted through its `urlHash` rather than duplicated. Code collisions retry within `MAX_CODE_ATTEMPTS`; exhausted attempts return a clean `503`. Redis caches hot links for at most 15 minutes (default), capped by the link's remaining lifetime; cold and failed cache paths fall back to MongoDB. The global limit is 5,000 requests/hour by default, with a separate per-IP create limit. Click attempts, successes, and failures are buffered and rolled up into minute, hour, day, and month metrics; 5xx errors go to a bounded error log. Admin sessions use a 30-minute sliding idle timeout and an 8-hour absolute cap.
+A repeated destination is adopted through its `urlHash` rather than duplicated. Code collisions retry within `MAX_CODE_ATTEMPTS`; exhausted attempts return a clean `503`. Upstash Redis caches hot links in production for at most 15 minutes (default), capped by the link's remaining lifetime; development uses the in-memory store. Cold and failed cache paths fall back to MongoDB. The global limit is 5,000 requests/hour by default, with a separate per-IP create limit. Click attempts, successes, and failures are buffered and rolled up into minute, hour, day, and month metrics; 5xx errors go to a bounded error log. Admin sessions use a 30-minute sliding idle timeout and an 8-hour absolute cap.
 
 ### URL validation
 
@@ -159,7 +160,7 @@ npm run build
 npm start
 ```
 
-`npm run build` typechecks, copies `config/` into `dist/`, and compiles the deterministic artifacts. `npm start` runs `node dist/src/server.js`. MongoDB is required; managed Redis is recommended but cache-only. Set `NODE_ENV=production`, `MONGODB_URI`, `PUBLIC_URL`, `FRONTEND_URL`, `ENCRYPTION_KEY`, and any `SYSADMIN_*` values. Do not set `SERVER_STAGE_TIMINGS` or other benchmark overrides in production. The benchmark report endpoint and sysadmin section are dev-only.
+`npm run build` typechecks, copies `config/` into `dist/`, and compiles the deterministic artifacts. `npm start` runs `node dist/src/server.js`. MongoDB is required. Upstash Redis is required in production for cache, rate limits, click buffering, and admin lockouts; development uses the in-memory store. Set `NODE_ENV=production`, `MONGODB_URI`, `PUBLIC_URL`, `FRONTEND_URL`, `ENCRYPTION_KEY`, `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, and any `SYSADMIN_*` values. Do not set `SERVER_STAGE_TIMINGS` or other benchmark overrides in production. The benchmark report endpoint and sysadmin section are dev-only.
 
 ## Troubleshooting
 
@@ -167,7 +168,8 @@ npm start
 - **429 responses**: the shared global or per-IP create limit was reached; wait for `Retry-After` or adjust the limits for local load tests only.
 - **Database is unavailable / 503**: check `MONGODB_URI` and whether MongoDB is accepting connections.
 - **Blocklist degraded or closed**: check the files and hashes declared in `config/blocklists/sources.json`; `open` continues with degraded readiness, `closed` rejects creates.
-- **Sysadmin login lockout**: three failures in 15 minutes lock the `(IP, username)` pair; wait for the window to expire or clear the local/Redis lockout state.
+- **Sysadmin login lockout**: three failures in 15 minutes lock the `(IP, username)` pair; wait for the window to expire or clear the in-memory or Upstash lockout state.
+- **Upstash configuration missing in production**: startup fails by design; set both `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`.
 - **Stale compiled artifacts**: rerun `npm run blocklists:fetch` and `npm run config:compile`, or `npm run build`.
 
 ## Tests & Scripts
@@ -224,7 +226,7 @@ Claude 5.5 by Anthropic, GLM 5.3 by Z.ai, and DeepSeek 4.1 were used during deve
 - Phishing Army — phishing domain list
 - URLhaus — malicious URL hostfile
 - Vercel — frontend hosting and deployment
-- Redis — cache
+- Upstash — Redis cache
 - MongoDB — primary database
 
 ---

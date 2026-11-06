@@ -67,7 +67,8 @@ test("frontend request-shape values match the backend contract", () => {
 test("defaults cache and click settings", () => {
   const env = loadEnv(baseEnv);
 
-  assert.equal(env.REDIS_URL, undefined);
+  assert.equal(env.UPSTASH_REDIS_REST_URL, undefined);
+  assert.equal(env.UPSTASH_REDIS_REST_TOKEN, undefined);
   assert.equal(env.GLOBAL_RATE_LIMIT_PER_HOUR, 5000);
   assert.equal(env.HOT_VISIT_THRESHOLD, 4);
   assert.equal(env.HOT_WINDOW_SECONDS, 300);
@@ -78,17 +79,56 @@ test("defaults cache and click settings", () => {
   assert.equal(env.SYSADMIN_ENABLED, false);
 });
 
-test("accepts a redis URL and validates its protocol", () => {
+test("accepts Upstash REST credentials and normalises the URL", () => {
   const env = loadEnv({
     ...baseEnv,
-    REDIS_URL: "rediss://default:secret@redis.example:6380",
+    UPSTASH_REDIS_REST_URL: "https://upstash.example/",
+    UPSTASH_REDIS_REST_TOKEN: "test-token",
   });
 
-  assert.match(env.REDIS_URL ?? "", /^rediss:\/\//);
+  assert.equal(env.UPSTASH_REDIS_REST_URL, "https://upstash.example");
+  assert.equal(env.UPSTASH_REDIS_REST_TOKEN, "test-token");
+});
+
+test("rejects partial or invalid Upstash credentials", () => {
+  assert.throws(
+    () =>
+      loadEnv({
+        ...baseEnv,
+        UPSTASH_REDIS_REST_URL: "https://upstash.example",
+      }),
+    /must be set together/
+  );
 
   assert.throws(
-    () => loadEnv({ ...baseEnv, REDIS_URL: "https://example.com" }),
-    /REDIS_URL must be a valid/
+    () =>
+      loadEnv({
+        ...baseEnv,
+        UPSTASH_REDIS_REST_TOKEN: "test-token",
+      }),
+    /must be set together/
+  );
+
+  assert.throws(
+    () =>
+      loadEnv({
+        ...baseEnv,
+        UPSTASH_REDIS_REST_URL: "redis://upstash.example",
+        UPSTASH_REDIS_REST_TOKEN: "test-token",
+      }),
+    /UPSTASH_REDIS_REST_URL must be a valid/
+  );
+});
+
+test("requires Upstash credentials in production", () => {
+  assert.throws(
+    () =>
+      loadEnv({
+        ...baseEnv,
+        NODE_ENV: "production",
+        FRONTEND_URL: "https://lynky.example",
+      }),
+    /required in production/
   );
 });
 

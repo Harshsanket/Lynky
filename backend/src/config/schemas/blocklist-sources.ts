@@ -33,4 +33,3 @@ export const blocklistSourcesSchema = z
   .loose();
 
 export type BlocklistSource = z.infer<typeof blocklistSourceSchema>;
-export type BlocklistSources = z.infer<typeof blocklistSourcesSchema>;

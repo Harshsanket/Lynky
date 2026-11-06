@@ -10,9 +10,15 @@ const baseEnv = {
   EXPIRATION_DAYS: "7",
 };
 
+const upstashEnv = {
+  UPSTASH_REDIS_REST_URL: "https://upstash.example",
+  UPSTASH_REDIS_REST_TOKEN: "test-token",
+};
+
 test("treats lowercase production as production", () => {
   const env = loadEnv({
     ...baseEnv,
+    ...upstashEnv,
     NODE_ENV: "production",
     FRONTEND_URL: "https://lynky.example",
   });
@@ -25,6 +31,7 @@ test("treats lowercase production as production", () => {
 test("treats uppercase production as production", () => {
   const env = loadEnv({
     ...baseEnv,
+    ...upstashEnv,
     NODE_ENV: "PRODUCTION",
     FRONTEND_URL: "https://lynky.example",
   });
@@ -34,7 +41,7 @@ test("treats uppercase production as production", () => {
 
 test("requires FRONTEND_URL in production", () => {
   assert.throws(
-    () => loadEnv({ ...baseEnv, NODE_ENV: "production" }),
+    () => loadEnv({ ...baseEnv, ...upstashEnv, NODE_ENV: "production" }),
     /FRONTEND_URL is not configured/
   );
 });
@@ -42,6 +49,7 @@ test("requires FRONTEND_URL in production", () => {
 test("normalises a trailing slash on FRONTEND_URL", () => {
   const env = loadEnv({
     ...baseEnv,
+    ...upstashEnv,
     NODE_ENV: "production",
     FRONTEND_URL: "https://lynky.example/",
   });
@@ -158,6 +166,7 @@ test("validates FRONTEND_URL as an origin", () => {
     () =>
       loadEnv({
         ...baseEnv,
+        ...upstashEnv,
         NODE_ENV: "production",
         FRONTEND_URL: "https://example.com/path",
       }),
@@ -166,6 +175,7 @@ test("validates FRONTEND_URL as an origin", () => {
 
   const env = loadEnv({
     ...baseEnv,
+    ...upstashEnv,
     NODE_ENV: "production",
     FRONTEND_URL: "https://example.com/",
   });
