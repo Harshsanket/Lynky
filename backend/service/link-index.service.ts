@@ -1,72 +1,144 @@
 import { Link } from "../models/link.models.js";
 import { logInfo } from "./logger.js";
 
+const CODE_HASH_INDEX = {
+  name: "codeHash_1",
+  unique: true,
+  partialFilterExpression: { codeHash: { $type: "string" } },
+} as const;
+
+const codeHashIsPartialUnique = (index: {
+  unique?: boolean;
+  partialFilterExpression?: Record<string, unknown>;
+}): boolean => {
+  const filter = index.partialFilterExpression;
+  const codeHash = filter?.codeHash as { $type?: unknown } | undefined;
+
+  return index.unique === true && codeHash?.$type === "string";
+};
+
 /**
  * Ensure the links collection has the indexes the runtime expects.
  *
- * The legacy plaintext `code` index must be sparse: MongoDB treats a missing
- * field as null in a non-sparse unique index, so new codeHash-only rows would
- * collide with each other and every create would fail. Production may carry
- * this index under an older name, so detect it by key rather than by name.
+ * Production can carry indexes from older schemas: a non-sparse plaintext
+ * `code` index, a non-unique `urlHash_1`, or a non-partial `codeHash_1`.
+ * Repair them by key before Mongoose's `Link.init()` attempts to create its
+ * own definitions and fails with an index conflict.
  */
 export const assertLinkIndexesReady = async (): Promise<void> => {
-  await Link.init();
-
   const indexes = await Link.collection.indexes();
+  const dropped: string[] = [];
+
+  /* Legacy plaintext code index: must be sparse so codeHash-only rows are
+     not treated as duplicate nulls. */
   const codeIndexes = indexes.filter(
     (index) =>
       index.key &&
       (index.key as Record<string, unknown>).code === 1
   );
-  const canonical = codeIndexes.find(
+  const canonicalCode = codeIndexes.find(
     (index) => index.name === "code_1"
   );
-  const needsRepair =
+  const codeNeedsRepair =
     codeIndexes.length > 0 &&
     (codeIndexes.length !== 1 ||
-      canonical === undefined ||
-      canonical.sparse !== true);
+      canonicalCode === undefined ||
+      canonicalCode.sparse !== true);
 
-  if (needsRepair) {
+  if (codeNeedsRepair) {
     for (const index of codeIndexes) {
-      if (!index.name) {
-        continue;
-      }
+      if (!index.name) continue;
 
       try {
         await Link.collection.dropIndex(index.name);
+        dropped.push(index.name);
       } catch (error) {
         if ((error as { codeName?: string }).codeName !== "IndexNotFound") {
           throw error;
         }
       }
     }
+  }
 
-    await Link.collection.createIndex(
-      { code: 1 },
-      { name: "code_1", sparse: true }
-    );
-
-    logInfo("legacy_code_index_repaired", {
-      dropped: codeIndexes
-        .map((index) => index.name)
-        .filter((name): name is string => typeof name === "string"),
-      created: "code_1",
-    });
-  } else if (codeIndexes.length === 0) {
+  if (codeIndexes.length === 0 || codeNeedsRepair) {
     await Link.collection.createIndex(
       { code: 1 },
       { name: "code_1", sparse: true }
     );
   }
 
-  const codeHashIndex = indexes.find(
+  /* Legacy urlHash index: must be unique. */
+  const urlHashIndex = indexes.find(
+    (index) =>
+      index.key &&
+      (index.key as Record<string, unknown>).urlHash === 1
+  );
+
+  if (urlHashIndex?.name && urlHashIndex.unique !== true) {
+    await Link.collection.dropIndex(urlHashIndex.name);
+    dropped.push(urlHashIndex.name);
+    await Link.collection.createIndex(
+      { urlHash: 1 },
+      { name: "urlHash_1", unique: true }
+    );
+  }
+
+  if (!urlHashIndex) {
+    await Link.collection.createIndex(
+      { urlHash: 1 },
+      { name: "urlHash_1", unique: true }
+    );
+  }
+
+  /* Legacy codeHash index: must be unique for string values only, so rows
+     created before codeHash existed do not block the index build. */
+  const codeHashIndexes = indexes.filter(
+    (index) =>
+      index.key &&
+      (index.key as Record<string, unknown>).codeHash === 1
+  );
+  const canonicalCodeHash = codeHashIndexes.find(
     (index) => index.name === "codeHash_1"
+  );
+  const hasPartialCodeHash = codeHashIndexes.some(codeHashIsPartialUnique);
+
+  if (!hasPartialCodeHash) {
+    if (canonicalCodeHash?.name) {
+      await Link.collection.dropIndex(canonicalCodeHash.name);
+      dropped.push(canonicalCodeHash.name);
+    }
+
+    await Link.collection.createIndex(
+      { codeHash: 1 },
+      CODE_HASH_INDEX
+    );
+  }
+
+  if (dropped.length > 0) {
+    logInfo("link_indexes_repaired", { dropped });
+  }
+
+  /* Let Mongoose create any remaining schema indexes, then verify the
+     critical unique indexes exist. */
+  await Link.init();
+
+  const finalIndexes = await Link.collection.indexes();
+  const codeHashIndex = finalIndexes.find(
+    (index) => index.name === "codeHash_1"
+  );
+  const urlHashIndexFinal = finalIndexes.find(
+    (index) => index.name === "urlHash_1"
   );
 
   if (!codeHashIndex || codeHashIndex.unique !== true) {
     throw new Error(
       "codeHash_1 unique index is missing. Create it before starting this version."
+    );
+  }
+
+  if (!urlHashIndexFinal || urlHashIndexFinal.unique !== true) {
+    throw new Error(
+      "urlHash_1 unique index is missing. Create it before starting this version."
     );
   }
 };
