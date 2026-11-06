@@ -453,6 +453,27 @@ export const createShortUrlFromPrepared = async (
         continue;
       }
 
+      const codeHashCollision =
+        collidingIndex?.includes("codeHash") ?? false;
+
+      if (!codeHashCollision) {
+        /*
+         * The legacy plaintext `code` index is not sparse. This is a schema
+         * problem, not a short-code collision; the startup index guard repairs
+         * it. Log it distinctly so it cannot masquerade as exhaustion.
+         */
+        logWarn("SHORT CODE COLLISION", {
+          operation: "createShortUrl",
+          attempt,
+          collidingIndex,
+          resolution: "legacy_code_index",
+          errorCode: "short_code_collision",
+          cleanedUrl: redactUrl(cleanedUrl),
+        });
+
+        continue;
+      }
+
       // Duplicate codeHash collision: generate a fresh salt and retry. This
       // is expected under load and self-heals within MAX_CODE_ATTEMPTS.
       logWarn("SHORT CODE COLLISION", {
