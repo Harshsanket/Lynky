@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
-import { checkBackendHealth } from "../api/ping.api";
+import { getStatus, refreshStatus } from "../lib/status-cache";
 
 /**
- * ServerStatus — pill showing backend connectivity. Pings `/ping` every
- * second for up to 2 minutes (so a cold start isn't flagged as offline).
+ * ServerStatus — pill showing backend connectivity.
+ *
+ * Uses the shared 30-second status cache instead of polling on every mount, so
+ * StrictMode remounts and duplicate components do not multiply requests.
  */
 const ServerStatus = () => {
   const [status, setStatus] = useState("connecting");
@@ -11,37 +13,33 @@ const ServerStatus = () => {
   useEffect(() => {
     let cancelled = false;
 
-    const checkServer = async () => {
-      const endTime = Date.now() + 2 * 60 * 1000;
-      let delay = 1000;
-
-      while (!cancelled && Date.now() < endTime) {
-        try {
-          const result = await checkBackendHealth();
-
-          if (cancelled) return;
-
-          if (result.online) {
-            setStatus("connected");
-            return;
-          }
-        } catch {
-          // Keep trying until the 2-minute timeout.
-        }
-
-        await new Promise((resolve) => setTimeout(resolve, delay));
-        delay = Math.min(delay * 2, 15_000);
-      }
-
+    const apply = (result) => {
       if (!cancelled) {
-        setStatus("disconnected");
+        setStatus(result?.online ? "connected" : "disconnected");
       }
     };
 
-    checkServer();
+    getStatus()
+      .then(apply)
+      .catch(() => {
+        if (!cancelled) setStatus("disconnected");
+      });
+
+    const handleOnline = () => {
+      refreshStatus().then(apply).catch(() => apply({ online: false }));
+    };
+
+    const handleApiError = () => {
+      refreshStatus().then(apply).catch(() => apply({ online: false }));
+    };
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("lynky:api-error", handleApiError);
 
     return () => {
       cancelled = true;
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("lynky:api-error", handleApiError);
     };
   }, []);
 

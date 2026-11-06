@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 process.env.NODE_ENV = "test";
 process.env.MONGODB_URI = "mongodb://127.0.0.1:1/lynky-test";
-process.env.ENCRYPTION_KEY = "test-encryption-key";
+process.env.ENCRYPTION_KEY = "test-encryption-key-0123456789abcdef";
 process.env.PUBLIC_URL = "https://lynky.test";
 process.env.FRONTEND_URL = "https://app.lynky.test";
 process.env.EXPIRATION_DAYS = "30";
@@ -73,6 +73,21 @@ test("collapses identical repeated parameters", () => {
     cleanUrl("https://shop.example.com/search?a=1&a=1"),
     "https://shop.example.com/search?a=1"
   );
+});
+
+test("removes referral parameters but keeps allowlisted affiliate tags", () => {
+  const google = cleanUrl(
+    "https://www.google.com/search?q=lynky&referrer=spam&utm_source=news"
+  );
+
+  assert.equal(google, "https://www.google.com/search?q=lynky");
+
+  const amazon = cleanUrl(
+    "https://www.amazon.in/dp/B0FQFW4MVJ?tag=affiliate-21&ascsubtag=tracking&ref=sr_1_3"
+  );
+
+  assert.match(amazon, /[?&]tag=affiliate-21(?:&|$)/);
+  assert.doesNotMatch(amazon, /ascsubtag|ref=/);
 });
 
 test("validates short codes before database lookup", () => {

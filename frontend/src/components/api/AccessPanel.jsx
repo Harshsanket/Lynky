@@ -1,10 +1,9 @@
 /**
  * AccessPanel — "access status" panel explaining that API secrets are issued
- * manually, with the current monthly quota.
+ * manually and metered per secret.
  */
 
 import { mono, display, body } from "../../lib/theme";
-import { MONTHLY_LIMIT_LABEL } from "../../lib/config";
 
 export default function AccessPanel() {
   return (
@@ -52,11 +51,11 @@ export default function AccessPanel() {
 
           <div className="mt-8">
             <span className="block text-3xl" style={{ ...display, color: "var(--color-ink)", fontWeight: 500 }}>
-              {MONTHLY_LIMIT_LABEL}
+              Metered
             </span>
 
             <span className="mt-1 block text-[10px] uppercase tracking-[0.12em]" style={{ ...mono, color: "var(--color-ink-soft)" }}>
-              links / month
+              per API secret
             </span>
           </div>
         </div>

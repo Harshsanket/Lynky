@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import { env } from "../src/config/env.js";
+import { logError, logInfo } from "../service/logger.js";
 
 const MONGODB_URI = env.MONGODB_URI;
 
@@ -69,7 +70,9 @@ const registerConnectionEvents = () => {
     cached.promise = null;
     cached.conn = null;
 
-    console.error("MongoDB connection error:", error);
+    logError("mongo_connection_error", error, {
+      errorCode: "mongo_connection_error",
+    });
   });
 
   mongoose.connection.on("reconnected", () => {
@@ -131,19 +134,18 @@ export const connectDatabase = async (): Promise<typeof mongoose> => {
     cached.conn = mongoose;
     cached.promise = null;
 
-    console.log(
-      `MongoDB connected: ${cached.conn.connection.host}`
-    );
+    logInfo("mongo_connected", {
+      host: cached.conn.connection.host,
+    });
 
     return cached.conn;
   } catch (error) {
     cached.promise = null;
     cached.conn = null;
 
-    console.error(
-      "MongoDB connection failed:",
-      error
-    );
+    logError("mongo_connection_failed", error, {
+      errorCode: "mongo_connection_failed",
+    });
 
     throw error;
   }

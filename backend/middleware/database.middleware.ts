@@ -16,7 +16,8 @@ export const databaseConnectionMiddleware = async (
 
     next();
   } catch (error) {
-    logError("DATABASE CONNECTION MIDDLEWARE ERROR", error, {
+    logError("request_error", error, {
+      errorCode: "database_unavailable",
       operation: "databaseConnectionMiddleware",
     });
 

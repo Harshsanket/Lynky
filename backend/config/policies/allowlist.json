@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "global": [],
+  "domains": {
+    "youtube.com": [
+      "v",
+      "list",
+      "t",
+      "index"
+    ],
+    "youtu.be": [
+      "v",
+      "list",
+      "t",
+      "index"
+    ],
+    "amazon.com": [
+      "tag"
+    ],
+    "amazon.co.uk": [
+      "tag"
+    ],
+    "amazon.de": [
+      "tag"
+    ],
+    "amazon.ca": [
+      "tag"
+    ],
+    "amazon.co.jp": [
+      "tag"
+    ],
+    "amazon.in": [
+      "tag"
+    ],
+    "amazon.fr": [
+      "tag"
+    ],
+    "amazon.it": [
+      "tag"
+    ],
+    "amazon.es": [
+      "tag"
+    ]
+  }
+}

@@ -1,26 +1,40 @@
 /**
- * About — "A small tool with a deliberately small job."
+ * About — "A small tool with a deliberately big job."
  *
  * Editorial page; reusable rows/cards live in `src/components/about/`.
  */
 
+import { Bug, Star } from "lucide-react";
 import { mono, body, display } from "../lib/theme";
 import Section from "../components/Section";
-import Principle from "../components/about/Principle";
 import LinkRow from "../components/about/LinkRow";
+import Principle from "../components/about/Principle";
 import ThanksRow from "../components/about/ThanksRow";
 
 const THANKS = [
   {
-    name: "Siddhesh Kumar",
-    role: "friend / engineer",
-    note: "For the debugging sessions, second opinions, and being around when something refused to work.",
+    name: "ClearURLs",
+    role: "rules",
+    note: "For the community-maintained tracker and provider rules compiled into Lynky's cleaner.",
+    url: "https://github.com/ClearURLs/Rules",
   },
   {
-    name: "Kevin Roebert",
-    role: "ClearURLs",
-    note: "For leading the ClearURLs project and maintaining the rules that Lynky builds its cleaning layer on.",
-    url: "https://github.com/ClearURLs/Rules",
+    name: "HaGeZi",
+    role: "blocklists",
+    note: "For the domain blocklists used for malware, phishing, NSFW, gambling, and URL-shortener screening.",
+    url: "https://github.com/hagezi/dns-blocklists",
+  },
+  {
+    name: "Phishing Army",
+    role: "blocklists",
+    note: "For the phishing domain blocklist screened at create time.",
+    url: "https://phishing.army/",
+  },
+  {
+    name: "URLhaus / abuse.ch",
+    role: "blocklists",
+    note: "For the malicious URL hostfile screened at create time.",
+    url: "https://urlhaus.abuse.ch/",
   },
   {
     name: "Vercel",
@@ -35,9 +49,10 @@ const THANKS = [
     url: "https://www.mongodb.com",
   },
   {
-    name: "ChatGPT & DeepSeek",
-    role: "tools",
-    note: "Used as pair-programming tools during development.",
+    name: "Redis",
+    role: "infrastructure",
+    note: "For the hot-link cache and rate-limit fallback.",
+    url: "https://redis.io/",
   },
 ];
 
@@ -65,7 +80,7 @@ const About = () => {
           className="mt-6 max-w-170 text-[2.7rem] leading-[1.02] sm:text-[3.5rem]"
           style={{ ...display, color: "var(--color-ink)", fontWeight: 500 }}
         >
-          A small tool with a deliberately small job.
+          A small tool with a deliberately big job.
         </h1>
 
         <p
@@ -81,66 +96,79 @@ const About = () => {
       <Section
         mark="01 / why"
         eyebrow="the reason it exists"
-        title="The link should just be a link."
+        title="This page is about the link itself."
       >
         <p>
-          A shared address should primarily describe where someone is going. Instead, many URLs
-          accumulate campaign tags, click identifiers, search state and other metadata that has
-          little to do with the destination itself.
+          Internet privacy, consent, and enforcement differ across countries and regions. A shared
+          link can carry campaign identifiers, referral strings, advertising IDs, analytics
+          parameters, tracking tokens, and other metadata that has nothing to do with the page a
+          person is trying to reach.
         </p>
 
         <p>
-          Lynky started from a simple preference: remove the unnecessary parts before passing the
-          link on.
+          Lynky cleans a link before it is shared, removes known and unnecessary parameters where it
+          is safe to do so, and produces a short link containing only what is needed to redirect.
+          The result is easier to read and share, less likely to expose unnecessary tracking
+          information, and less likely to fill a conversation with an overlong URL or an unwanted
+          automatic preview.
         </p>
-
-        <div className="border-l-2 py-1 pl-5" style={{ borderColor: "var(--color-clean)" }}>
-          <p
-            className="text-base leading-relaxed"
-            style={{ ...display, color: "var(--color-ink)", fontWeight: 500 }}
-          >
-            Keep the destination. Remove the trail.
-          </p>
-        </div>
       </Section>
 
       {/* 02 / MAKER */}
       <Section
         mark="02 / maker"
         eyebrow="behind the project"
-        title="Built and maintained by Harsh Sanket."
+        title="Proudly made in Mumbai by Harsh Sanket."
       >
         <p>
-          I'm a software engineer based in Mumbai. Lynky is an independent project rather than a
-          product built by a larger company or team.
-        </p>
-
-        <p>
-          That means the same person writing the cleaner, API and storage logic is also responsible
-          for keeping the project understandable enough for someone else to inspect.
+          I'm a software engineer based in Mumbai. Lynky is an independent project I build and
+          maintain, with the cleaning and shortening path kept understandable enough to inspect.
         </p>
 
         <div
           className="border"
-          style={{ borderColor: "var(--color-border)", backgroundColor: "var(--color-bg-alt)" }}
+          style={{
+            borderColor: "var(--color-border)",
+            backgroundColor: "var(--color-bg-alt)",
+          }}
         >
-          <div className="border-b px-5 py-3" style={{ borderColor: "var(--color-border)" }}>
-            <span className="text-[9px] uppercase tracking-[0.16em]" style={{ ...mono, color: "var(--color-ink-soft)" }}>
-              coordinates
+          <div className="p-5 sm:p-6">
+            <span
+              className="text-[9px] uppercase tracking-[0.18em]"
+              style={{ ...mono, color: "var(--color-dirty)" }}
+            >
+              project / source
             </span>
+
+            <p
+              className="mt-3 max-w-md text-sm leading-relaxed"
+              style={{ ...body, color: "var(--color-ink-soft)" }}
+            >
+              Lynky is an independent URL cleaner and shortener. Lynky is open source under GNU
+              GPL v3.
+            </p>
           </div>
 
-          <div className="px-5">
+          <div className="px-5 sm:px-6">
             <LinkRow
-              label="github"
+              label="license"
+              value="GNU GPL v3"
+              href="https://github.com/Harshsanket/Lynky/blob/main/LICENSE"
+            />
+            <LinkRow
+              label="project"
+              value="github.com/Harshsanket/Lynky"
+              href="https://github.com/Harshsanket/Lynky"
+            />
+            <LinkRow
+              label="maker"
               value="github.com/harshsanket"
               href="https://github.com/harshsanket"
             />
-
             <LinkRow
-              label="project"
-              value="github.com/harshsanket/lynky"
-              href="https://github.com/Harshsanket/Lynky"
+              label="x"
+              value="@harshsanket1"
+              href="https://x.com/harshsanket1"
             />
           </div>
         </div>
@@ -150,7 +178,7 @@ const About = () => {
       <Section
         mark="03 / principles"
         eyebrow="constraints by design"
-        title="The project follows a few intentionally boring rules."
+        title="The project follows a few deliberate rules."
       >
         <p>
           Lynky is not trying to become an analytics platform, link management suite or advertising
@@ -183,12 +211,12 @@ const About = () => {
       {/* 04 / OPEN */}
       <Section
         mark="04 / open"
-        eyebrow="nothing hidden behind copy"
+        eyebrow="source code"
         title="The implementation is part of the explanation."
       >
         <p>
-          Lynky is open source. The cleaning rules, API behavior, short-code generation, encryption
-          and expiry logic can be read directly instead of inferred from a marketing page.
+          Lynky is source-available. The cleaning rules, API behavior, short-code generation,
+          encryption, and expiry logic can be read directly.
         </p>
 
         <div
@@ -231,7 +259,7 @@ const About = () => {
       <Section
         mark="05 / thanks"
         eyebrow="people, projects, infrastructure"
-        title="Small projects still depend on a lot of other work."
+        title="The project still depends on a lot of other work."
       >
         <p>
           Lynky is maintained independently, but it was not created in isolation. These are some of
@@ -245,26 +273,80 @@ const About = () => {
         </div>
       </Section>
 
-      {/* FOOTER */}
-      <footer
-        className="grid border-t py-12 sm:grid-cols-[118px_1fr] sm:gap-10"
-        style={{ borderColor: "var(--color-border)" }}
+      {/* 06 / GITHUB */}
+      <Section
+        mark="06 / github"
+        eyebrow="source, issues, contributions"
+        title="The repository is the project page."
       >
-        <span className="text-[10px] uppercase tracking-[0.16em]" style={{ ...mono, color: "var(--color-dirty)" }}>
-          end / about
-        </span>
+        <p>
+          If Lynky is useful, star the repository. Found a bug? Open an issue.
+        </p>
 
-        <div className="mt-6 sm:mt-0">
-          <p className="max-w-xl text-xl leading-snug sm:text-2xl" style={{ ...display, color: "var(--color-ink)", fontWeight: 500 }}>
-            Built in Mumbai. Open on GitHub. Designed to disappear from the interaction as quickly
-            as possible.
-          </p>
+        <div
+          className="grid gap-px border sm:grid-cols-2"
+          style={{
+            borderColor: "var(--color-border)",
+            backgroundColor: "var(--color-border)",
+          }}
+        >
+          <a
+            href="https://github.com/Harshsanket/Lynky"
+            target="_blank"
+            rel="noreferrer"
+            aria-label="Star Lynky on GitHub"
+            className="group bg-(--color-bg-alt) p-5 transition-opacity hover:opacity-70 sm:p-6"
+          >
+            <Star
+              className="h-5 w-5"
+              fill="currentColor"
+              style={{ color: "var(--color-clean)" }}
+            />
 
-          <p className="mt-4 text-[10px] uppercase tracking-[0.14em]" style={{ ...mono, color: "var(--color-ink-soft)" }}>
-            lynky / independent software
-          </p>
+            <p
+              className="mt-4 text-base"
+              style={{ ...display, color: "var(--color-ink)", fontWeight: 500 }}
+            >
+              Star the repository
+            </p>
+
+            <p
+              className="mt-2 break-all text-xs"
+              style={{ ...mono, color: "var(--color-ink-soft)" }}
+            >
+              github.com/Harshsanket/Lynky ↗
+            </p>
+          </a>
+
+          <a
+            href="https://github.com/Harshsanket/Lynky/issues"
+            target="_blank"
+            rel="noreferrer"
+            aria-label="Open a Lynky issue on GitHub"
+            className="group bg-(--color-bg-alt) p-5 transition-opacity hover:opacity-70 sm:p-6"
+          >
+            <Bug
+              className="h-5 w-5"
+              style={{ color: "var(--color-dirty)" }}
+            />
+
+            <p
+              className="mt-4 text-base"
+              style={{ ...display, color: "var(--color-ink)", fontWeight: 500 }}
+            >
+              Open an issue
+            </p>
+
+            <p
+              className="mt-2 break-all text-xs"
+              style={{ ...mono, color: "var(--color-ink-soft)" }}
+            >
+              github.com/Harshsanket/Lynky/issues ↗
+            </p>
+          </a>
         </div>
-      </footer>
+      </Section>
+
     </main>
   );
 };

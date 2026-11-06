@@ -3,13 +3,11 @@ import { useNavigate } from 'react-router';
 import { getApiKeyUsage } from '../api/usage.api';
 import LeafCorner from '../components/LeafCorner';
 import {
-  API_KEY_MAX_INPUT_LENGTH,
+  API_KEY_LENGTH,
   isValidApiKey,
   sanitizeApiKey,
 } from '../lib/api-key';
 
-const STORAGE_KEY = 'lynky_secret_key';
-const STORAGE_USAGE = 'lynky_usage';
 const POLL_INTERVAL_MS = 10000;
 
 const INVALID_KEY_MESSAGE =
@@ -25,66 +23,58 @@ const formatCount = (value) =>
     : '—';
 
 /**
- * Restore the saved session (secret + usage) from sessionStorage.
- *
- * Session storage is intentionally used instead of localStorage so a raw API
- * secret does not outlive the browser tab.
- *
- * Runs once at first render via lazy `useState` initializers, so a refresh
- * doesn't kick the user back to the input screen. Invalid/stale data is
- * cleared and treated as "no session".
+ * The raw API secret is intentionally kept only in React state: it is never
+ * written to localStorage/sessionStorage, so a refresh or tab restore forces
+ * the user to re-enter it. Usage numbers follow the same rule.
  */
-const readStoredSession = () => {
-  const key = sessionStorage.getItem(STORAGE_KEY);
-  const raw = sessionStorage.getItem(STORAGE_USAGE);
-
-  if (!key || !raw) return null;
-
-  try {
-    return { key, usage: JSON.parse(raw) };
-  } catch {
-    sessionStorage.removeItem(STORAGE_KEY);
-    sessionStorage.removeItem(STORAGE_USAGE);
-    return null;
-  }
-};
-
 const API_Usage = () => {
   const navigate = useNavigate();
-  const [secretKey, setSecretKey] = useState(() => readStoredSession()?.key ?? '');
-  const [usage, setUsage] = useState(() => readStoredSession()?.usage ?? null);
+  const [secretKey, setSecretKey] = useState('');
+  const [usage, setUsage] = useState(null);
   const [usageError, setUsageError] = useState('');
   const [loadingUsage, setLoadingUsage] = useState(false);
   const pollRef = useRef(null);
 
-  // once usage is showing, keep it fresh in the background every 10s
+  // Once usage is showing, keep it fresh in the background every 10s.
+  // A simple in-flight guard prevents overlapping requests on slow networks.
   useEffect(() => {
     if (!usage || !secretKey) return;
 
+    let cancelled = false;
+    let inFlight = false;
+
     pollRef.current = setInterval(async () => {
       // Do not spend requests while the tab is in the background.
-      if (document.hidden) return;
+      if (cancelled || inFlight || document.hidden) return;
+
+      inFlight = true;
 
       try {
         const data = await getApiKeyUsage(secretKey);
-        setUsage(data?.data);
-        sessionStorage.setItem(STORAGE_USAGE, JSON.stringify(data?.data));
+
+        if (!cancelled) setUsage(data?.data);
       } catch (error) {
         // Keep the last known numbers on transient failures, but drop the
         // session when the key is no longer accepted.
-        if (error?.status === 401 || error?.status === 403) {
-          sessionStorage.removeItem(STORAGE_KEY);
-          sessionStorage.removeItem(STORAGE_USAGE);
+        if (
+          !cancelled &&
+          (error?.status === 401 || error?.status === 403)
+        ) {
           setSecretKey('');
           setUsage(null);
           setUsageError(
             error?.data?.message || 'This API key is no longer valid.',
           );
         }
+      } finally {
+        inFlight = false;
       }
     }, POLL_INTERVAL_MS);
 
-    return () => clearInterval(pollRef.current);
+    return () => {
+      cancelled = true;
+      clearInterval(pollRef.current);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [Boolean(usage), secretKey]);
 
@@ -106,14 +96,7 @@ const API_Usage = () => {
       const data = await getApiKeyUsage(key);
 
       setUsage(data?.data);
-      sessionStorage.setItem(STORAGE_KEY, key);
-      sessionStorage.setItem(STORAGE_USAGE, JSON.stringify(data?.data));
     } catch (error) {
-      if (error?.status === 401 || error?.status === 403) {
-        sessionStorage.removeItem(STORAGE_KEY);
-        sessionStorage.removeItem(STORAGE_USAGE);
-      }
-
       setUsageError(
         error?.data?.message || 'Unable to load usage stats.',
       );
@@ -124,8 +107,6 @@ const API_Usage = () => {
 
   const handleExit = () => {
     clearInterval(pollRef.current);
-    sessionStorage.removeItem(STORAGE_KEY);
-    sessionStorage.removeItem(STORAGE_USAGE);
     setSecretKey('');
     setUsage(null);
     setUsageError('');
@@ -160,7 +141,7 @@ const API_Usage = () => {
           >
             {usage
               ? 'Here\u2019s where your quota stands, refreshing on its own every few seconds. Keep your secret key to yourself \u2014 anyone who has it can spend it.'
-              : 'Paste your secret key below and we\u2019ll show you exactly how much of your monthly quota is left.'}
+              : 'Paste your secret key below and we\u2019ll show you exactly how much of your monthly quota is left. It stays in this tab\u2019s memory only, so a refresh clears it.'}
           </p>
         </div>
 
@@ -219,7 +200,7 @@ const API_Usage = () => {
                   aria-describedby={usageError ? 'usage-error' : undefined}
                   disabled={loadingUsage}
                   autoComplete="off"
-                  maxLength={API_KEY_MAX_INPUT_LENGTH}
+                  maxLength={API_KEY_LENGTH}
                   className="w-full flex-1 bg-transparent py-2.5 text-sm outline-none"
                   style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-ink)' }}
                 />

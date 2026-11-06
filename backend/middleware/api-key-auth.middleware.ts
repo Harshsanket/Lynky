@@ -62,7 +62,8 @@ export const createApiKeyAuthMiddleware = (
         });
       }
 
-      logError("API KEY VALIDATION ERROR", error, {
+      logError("request_error", error, {
+        errorCode: "request_error",
         operation: "apiKeyAuthMiddleware",
       });
 

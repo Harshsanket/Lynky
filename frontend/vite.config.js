@@ -11,7 +11,20 @@ export default defineConfig(({ mode }) => {
     )
   }
 
+  const siteUrl = (
+    env.VITE_SITE_URL || 'http://localhost:5173'
+  ).replace(/\/$/, '')
+
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [
+      react(),
+      tailwindcss(),
+      {
+        name: 'site-url-html',
+        transformIndexHtml(html) {
+          return html.replaceAll('%SITE_URL%', siteUrl)
+        },
+      },
+    ],
   }
 })

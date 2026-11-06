@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "providers": [
+    {
+      "id": "broken",
+      "urlPattern": "^https?://[",
+      "hostHints": [],
+      "completeProvider": false,
+      "rules": [],
+      "referralMarketing": [],
+      "exceptions": [],
+      "redirections": [],
+      "rawRules": []
+    }
+  ]
+}

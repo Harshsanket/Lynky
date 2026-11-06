@@ -16,7 +16,7 @@ const NODES = [
 export default function RedirectChainDiagram() {
   return (
     <FigureFrame
-      index="01"
+      index="03"
       title="The journey can be longer than the address suggests."
       note="request path"
     >

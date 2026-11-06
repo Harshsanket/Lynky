@@ -4,6 +4,7 @@
  */
 
 import { mono } from "../../lib/theme";
+import { SHORT_URL } from "../../lib/config";
 
 export default function CodeFrame() {
   return (
@@ -63,7 +64,7 @@ Content-Type: application/json
         <pre className="overflow-x-auto px-5 py-5 text-xs leading-[1.8]" style={{ ...mono, color: "var(--color-clean)" }}>
 {`{
   "success": true,
-  "shortUrl": "https://short-lnky-hs.vercel.app/abc1"
+  "shortUrl": "${SHORT_URL}/abc1"
 }`}
         </pre>
       </div>

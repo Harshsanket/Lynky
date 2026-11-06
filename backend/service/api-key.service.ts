@@ -38,22 +38,37 @@ export const hashApiSecret = (
     .digest("hex");
 };
 
-const API_SECRET_ALPHABET =
+/**
+ * The exact alphabet `generateApiSecret()` emits (base64url without `=`).
+ * The validator below reads this same constant so the two cannot drift.
+ */
+export const API_SECRET_ALPHABET =
   "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
-/**
- * A valid secret is exactly `env.API_KEY_LENGTH` (45) base64url characters.
- * Reject malformed keys before hitting the database so the backend accepts
- * the same shape the frontend sends.
- */
-const API_SECRET_PATTERN = new RegExp(
-  `^[A-Za-z0-9_-]{${env.API_KEY_LENGTH}}$`
-);
+const API_SECRET_CHARACTERS = new Set(API_SECRET_ALPHABET);
 
+/**
+ * A valid secret is a string of exactly `env.API_KEY_LENGTH` characters from
+ * `API_SECRET_ALPHABET`. Reject malformed keys before hitting the database so
+ * the backend accepts the same shape the frontend sends.
+ */
 export const isValidApiSecret = (
-  secret: string
+  secret: unknown
 ): boolean => {
-  return API_SECRET_PATTERN.test(secret);
+  if (
+    typeof secret !== "string" ||
+    secret.length !== env.API_KEY_LENGTH
+  ) {
+    return false;
+  }
+
+  for (const character of secret) {
+    if (!API_SECRET_CHARACTERS.has(character)) {
+      return false;
+    }
+  }
+
+  return true;
 };
 
 /**

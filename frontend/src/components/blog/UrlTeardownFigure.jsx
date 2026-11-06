@@ -1,5 +1,5 @@
 /**
- * UrlTeardownFigure — interactive Amazon-link anatomy. Each URL fragment is a
+ * UrlTeardownFigure — interactive link anatomy. Each URL fragment is a
  * button; selecting one highlights it and shows what it is for.
  */
 
@@ -22,30 +22,31 @@ const URL_PARTS = [
   {
     id: "02",
     label: "host",
-    value: "www.amazon.in",
+    value: "www.example.com",
     tone: "neutral",
     note: "The destination site. This identifies where the request ultimately goes.",
   },
   {
     id: "03",
-    label: "product route",
-    value: "/dp/B0FQFW4MVJ",
+    label: "page route",
+    value: "/products/42",
     tone: "clean",
-    note: "The useful part. The ASIN identifies the exact Amazon product page.",
+    note: "The useful part. The route identifies the exact page on the site.",
   },
   {
     id: "04",
     label: "attribution",
-    value: "/ref=sr_1_3",
+    value: "?utm_source=google",
     tone: "dirty",
-    note: "Describes where the product was encountered. The product page does not need this to resolve.",
+    note: "Describes how the visitor arrived. The destination page does not need this to resolve.",
   },
   {
     id: "05",
     label: "query string",
-    value: "?crid=…&dib=…&keywords=…&qid=…&sprefix=…&sr=8-3&th=1",
+    value:
+      "&utm_medium=cpc&utm_campaign=summer&utm_content=cpc-banner&gclid=Eh0iCj…&fbclid=IwAR2…&mc_cid=61d2e3&mc_eid=aa8f6f&ref=homepage",
     tone: "dirty",
-    note: "Search, ranking and interface context appended to the useful destination.",
+    note: "Campaign, ad-click and affiliate context appended to the useful destination.",
   },
 ];
 
@@ -61,7 +62,7 @@ export default function UrlTeardownFigure() {
 
   return (
     <FigureFrame
-      index="03"
+      index="05"
       title="One link. Five different jobs."
       note="select a fragment"
     >

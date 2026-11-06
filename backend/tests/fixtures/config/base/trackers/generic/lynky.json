@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "caseInsensitive": true,
+  "exact": [
+    "gclid"
+  ],
+  "prefixes": [
+    "utm_"
+  ],
+  "patterns": [
+    "^_ga(?:_|$)"
+  ]
+}

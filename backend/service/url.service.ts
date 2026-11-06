@@ -1,6 +1,6 @@
 import { env } from "../src/config/env.js";
 import { Link } from "../models/link.models.js";
-import { generateCode, getCodeLength } from "./shortcode-generater.service.js";
+import { hashCode, generateCodeSalt, deriveCodeFromSalt, isValidCodeSalt } from "./code-hash.service.js";
 import { hashUrl } from "./url-hasher.service.js";
 import { getPublicUrl } from "./url-public-generator.service.js";
 import { cleanUrl } from "./url-cleaner.service.js";
@@ -9,7 +9,29 @@ import { findExistingUrl, findLinkByUrlHash } from "./url-existance-checker.serv
 import { getExpirationDate } from "./url-expiration.service.js";
 import { encryptUrl } from "./encryption.service.js";
 import { assertNotOwnLink } from "./own-link.service.js";
-import { logError, redactUrl } from "./logger.js";
+import { invalidateLinkCache } from "./link-cache.service.js";
+import { clearNegative } from "./negative-cache.service.js";
+import { isValidCode } from "./shortcode-validator.service.js";
+import { logError, logWarn, redactUrl } from "./logger.js";
+import { runInBackground } from "../src/utils/background.js";
+import {
+  addStageTime,
+  measureStage,
+  measureStageSync,
+  type StageTimings,
+} from "./stage-timing.service.js";
+
+/** Raised when every allowed short-code attempt collides. */
+export class ShortCodeExhaustedError extends Error {
+  readonly statusCode = 503;
+
+  constructor() {
+    super(
+      `Unable to generate a unique short code after ${env.MAX_CODE_ATTEMPTS} attempts`
+    );
+    this.name = "ShortCodeExhaustedError";
+  }
+}
 
 /**
  * Create (or refresh) a short link for the given input URL.
@@ -57,32 +79,155 @@ const getCollidingIndex = (error: any): string | null => {
 };
 
 /**
+ * Re-derive or reuse the plaintext code for an existing `urlHash` row.
+ *
+ * Salted rows are stable across Redis loss. Legacy rows without a salt keep
+ * the creation-response Redis mapping fallback until they expire.
+ */
+type ExistingLink = {
+  _id: unknown;
+  code?: string | null;
+  codeHash?: string;
+  codeSalt?: string | null;
+};
+
+/**
  * Refresh an existing link's expiry and build the response for it.
+ *
+ * A salted row re-derives the same code from `urlHash + codeSalt`. A legacy
+ * row can reuse its stored plaintext `code`; when neither is available, it
+ * rotates and stores a fresh salt.
  */
 const adoptExistingLink = async (
-  existing: { code: string },
-  cleanedUrl: string
+  existing: ExistingLink,
+  cleanedUrl: string,
+  urlHash: string,
+  timings: StageTimings | null
 ) => {
   const expiresAt = getExpirationDate();
+  const salt = isValidCodeSalt(existing.codeSalt)
+    ? existing.codeSalt
+    : null;
 
-  const link = await Link.findByIdAndUpdate(
-    (existing as any)._id,
-    { $set: { expiresAt } },
-    { returnDocument: "after" }
-  ).lean();
+  let knownCode: string | null = null;
 
-  // The row may have been TTL-deleted between the lookup and this update.
-  if (!link) {
-    return null;
+  if (salt) {
+    knownCode = deriveCodeFromSalt(urlHash, salt);
+  } else if (
+    typeof existing.code === "string" &&
+    isValidCode(existing.code)
+  ) {
+    knownCode = existing.code;
   }
 
-  return {
-    code: link.code,
-    originalUrl: cleanedUrl,
-    shortUrl: getPublicUrl(link.code),
-    expiresAt: link.expiresAt,
-    created: false,
-  };
+  if (knownCode) {
+    const codeHash = hashCode(knownCode);
+    const update: Record<string, unknown> = {
+      $set: {
+        expiresAt,
+        ...(existing.codeHash === codeHash ? {} : { codeHash }),
+      },
+    };
+
+    if (existing.code) {
+      update.$unset = { code: "" };
+    }
+
+    const link = await measureStage(
+      timings,
+      "insertMs",
+      () =>
+        Link.findByIdAndUpdate(existing._id, update, {
+          returnDocument: "after",
+        }).lean()
+    );
+
+    if (!link) {
+      return null;
+    }
+
+    clearNegative(knownCode);
+
+    // Stable code: no rotation and no legacy Redis mapping. Refresh the edge
+    // cache in the background; the old short URL already points at the same
+    // destination.
+    runInBackground(
+      () => invalidateLinkCache(knownCode, { throwOnError: true }),
+      {
+        event: "cache_invalidation_failed",
+        errorCode: "cache_invalidation_failed",
+        context: { operation: "adoptExistingLink" },
+      }
+    );
+
+    return {
+      code: knownCode,
+      originalUrl: cleanedUrl,
+      shortUrl: getPublicUrl(knownCode),
+      expiresAt: link.expiresAt,
+      created: false,
+    };
+  }
+
+  /*
+   * No recoverable plaintext code: rotate. The new row gets a salt so future
+   * adoption is stable even if Redis is unavailable. The old codeHash stops
+   * matching immediately; invalidate its new code synchronously.
+   */
+  for (let attempt = 0; attempt < env.MAX_CODE_ATTEMPTS; attempt++) {
+    const codegenStartedAt = timings ? performance.now() : 0;
+    const codeSalt = generateCodeSalt();
+    const code = deriveCodeFromSalt(urlHash, codeSalt);
+    const codeHash = hashCode(code);
+
+    addStageTime(timings, "codegenMs", codegenStartedAt);
+
+    if (timings) {
+      timings.codegenAttempts += 1;
+    }
+
+    try {
+      const update: Record<string, unknown> = {
+        $set: { expiresAt, codeHash, codeSalt },
+      };
+
+      if (existing.code) {
+        update.$unset = { code: "" };
+      }
+
+      const link = await measureStage(
+        timings,
+        "insertMs",
+        () =>
+          Link.findByIdAndUpdate(existing._id, update, {
+            returnDocument: "after",
+          }).lean()
+      );
+
+      if (!link) {
+        return null;
+      }
+
+      clearNegative(code);
+      await invalidateLinkCache(code);
+
+      return {
+        code,
+        originalUrl: cleanedUrl,
+        shortUrl: getPublicUrl(code),
+        expiresAt: link.expiresAt,
+        created: false,
+      };
+    } catch (error: any) {
+      if (error?.code === 11000) {
+        continue;
+      }
+
+      throw error;
+    }
+  }
+
+  throw new ShortCodeExhaustedError();
 };
 
 export interface PreparedUrl {
@@ -96,37 +241,56 @@ export interface PreparedUrl {
  * Controllers call this before reserving API-key quota, so invalid or
  * impossible-to-clean URLs never consume a key's monthly allowance.
  */
-export const prepareUrl = (inputUrl: string): PreparedUrl => {
-  const parsedUrl = validateUrl(inputUrl);
+export const prepareUrl = (
+  inputUrl: string,
+  timings: StageTimings | null = null
+): PreparedUrl =>
+  measureStageSync(timings, "algorithmsMs", () => {
+    const parsedUrl = validateUrl(inputUrl);
 
-  assertNotOwnLink(parsedUrl);
+    assertNotOwnLink(parsedUrl);
 
-  const cleanedUrl = cleanUrl(inputUrl);
+    const cleanedUrl = cleanUrl(inputUrl);
 
-  // Cleaning may unwrap a redirect chain and change the destination host, so
-  // re-run the own-link guard against the final URL as well as the input.
-  assertNotOwnLink(new URL(cleanedUrl));
+    /*
+     * Cleaning may unwrap a redirect chain and change the destination host, so
+     * the own-link guard runs against the final URL *before* full validation:
+     * the own-link rejection is the message users of wrapped own links see,
+     * while the re-validation then applies every host-level check (shape, IP
+     * ranges, public suffix, blocklists) to the unwrapped destination too.
+     */
+    const cleanedParsedUrl = new URL(cleanedUrl);
 
-  return {
-    cleanedUrl,
-    urlHash: hashUrl(cleanedUrl),
-  };
-};
+    assertNotOwnLink(cleanedParsedUrl);
+
+    validateUrl(cleanedUrl, { enforceMaxLength: false });
+
+    return {
+      cleanedUrl,
+      urlHash: hashUrl(cleanedUrl),
+    };
+  });
 
 /**
  * Create (or refresh) a short link for a URL that has already been validated
  * and cleaned by `prepareUrl`.
  */
-export const createShortUrlFromPrepared = async ({
-  cleanedUrl,
-  urlHash,
-}: PreparedUrl) => {
-  const existingUrl = await findExistingUrl(urlHash);
+export const createShortUrlFromPrepared = async (
+  { cleanedUrl, urlHash }: PreparedUrl,
+  timings: StageTimings | null = null
+) => {
+  const existingUrl = await measureStage(
+    timings,
+    "dedupeMs",
+    () => findExistingUrl(urlHash)
+  );
 
   if (existingUrl) {
     const adopted = await adoptExistingLink(
       existingUrl,
-      cleanedUrl
+      cleanedUrl,
+      urlHash,
+      timings
     );
 
     if (adopted) {
@@ -141,20 +305,47 @@ export const createShortUrlFromPrepared = async ({
     attempt < env.MAX_CODE_ATTEMPTS;
     attempt++
   ) {
-    const code = generateCode(getCodeLength());
+    const codegenStartedAt = timings ? performance.now() : 0;
+    const codeSalt = generateCodeSalt();
+    const code = deriveCodeFromSalt(urlHash, codeSalt);
+    const codeHash = hashCode(code);
+
+    addStageTime(timings, "codegenMs", codegenStartedAt);
+
+    if (timings) {
+      timings.codegenAttempts += 1;
+    }
 
     try {
-      const link = await Link.create({
-        code,
-        originalUrl: encryptUrl(cleanedUrl),
-        urlHash,
-        expiresAt,
-      });
+      const link = await measureStage(
+        timings,
+        "insertMs",
+        () =>
+          Link.create({
+            codeHash,
+            codeSalt,
+            originalUrl: encryptUrl(cleanedUrl),
+            urlHash,
+            expiresAt,
+          })
+      );
 
-      const shortUrl = getPublicUrl(link.code);
+      clearNegative(code);
+      // New codes are stable: cache invalidation is a best-effort side effect
+      // and does not block the create response.
+      runInBackground(
+        () => invalidateLinkCache(code, { throwOnError: true }),
+        {
+          event: "cache_invalidation_failed",
+          errorCode: "cache_invalidation_failed",
+          context: { operation: "createShortUrl", stable: true },
+        }
+      );
+
+      const shortUrl = getPublicUrl(code);
 
       return {
-        code: link.code,
+        code,
         originalUrl: cleanedUrl,
         shortUrl,
         expiresAt: link.expiresAt,
@@ -166,7 +357,6 @@ export const createShortUrlFromPrepared = async ({
         logError("DATABASE CREATE ERROR", error, {
           operation: "createShortUrl",
           model: "Link",
-          code,
           attempt,
           cleanedUrl: redactUrl(cleanedUrl),
           expiresAt: expiresAt.toISOString(),
@@ -183,13 +373,34 @@ export const createShortUrlFromPrepared = async ({
         collidingIndex === "urlHash" ||
         collidingIndex?.includes("urlHash")
       ) {
-        const winner = await findLinkByUrlHash(urlHash);
+        const winner = await measureStage(
+          timings,
+          "dedupeMs",
+          () => findLinkByUrlHash(urlHash)
+        );
 
-        // The winner may have been TTL-deleted in the gap → retry insert.
+        // The winner may have expired in the gap (TTL deletes are
+        // asynchronous). Remove it so the retry gets a fresh salt/code and
+        // old short URLs do not revive.
         if (winner) {
+          if (new Date(winner.expiresAt).getTime() <= Date.now()) {
+            await measureStage(
+              timings,
+              "insertMs",
+              () =>
+                Link.deleteOne({
+                  _id: (winner as any)._id,
+                  expiresAt: { $lte: new Date() },
+                })
+            );
+            continue;
+          }
+
           const adopted = await adoptExistingLink(
             winner,
-            cleanedUrl
+            cleanedUrl,
+            urlHash,
+            timings
           );
 
           if (adopted) {
@@ -200,10 +411,10 @@ export const createShortUrlFromPrepared = async ({
         continue;
       }
 
-      // Duplicate short-code collision → try the next attempt.
-      logError("SHORT CODE COLLISION", error, {
+      // Duplicate codeHash collision: generate a fresh salt and retry. This
+      // is expected under load and self-heals within MAX_CODE_ATTEMPTS.
+      logWarn("SHORT CODE COLLISION", {
         operation: "createShortUrl",
-        code,
         attempt,
         cleanedUrl: redactUrl(cleanedUrl),
       });
@@ -212,7 +423,5 @@ export const createShortUrlFromPrepared = async ({
     }
   }
 
-  throw new Error(
-    `Unable to generate a unique short code after ${env.MAX_CODE_ATTEMPTS} attempts`
-  );
+  throw new ShortCodeExhaustedError();
 };

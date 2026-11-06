@@ -10,9 +10,13 @@ const NAV_LINKS = [
 const Header = () => {
   return (
     <header
-      className="mx-auto w-full max-w-3xl border-y"
+      className="sticky top-0 z-50 mx-auto w-full max-w-3xl border-y"
       style={{
         borderColor: "var(--color-border)",
+        backgroundColor:
+          "color-mix(in srgb, var(--color-bg) 94%, transparent)",
+        backdropFilter: "blur(10px)",
+        WebkitBackdropFilter: "blur(10px)",
       }}
     >
       <div className="flex w-full flex-wrap items-center justify-between gap-4 px-6 py-6 sm:px-8">

@@ -2,31 +2,53 @@
   "name": "backend",
   "version": "1.0.0",
   "description": "",
-  "license": "ISC",
+  "license": "GPL-3.0-only",
   "author": "",
   "type": "module",
   "main": "dist/src/server.js",
   "scripts": {
     "test": "node --import tsx --test tests/*.test.ts",
     "dev": "tsx watch src/server.ts",
-    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json && node scripts/copy-config.mjs",
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json && node scripts/copy-config.mjs && npm run config:compile",
     "start": "node dist/src/server.js",
     "provision:keys": "tsx scripts/provision-api-keys.ts",
-    "migrate:urlhash": "tsx scripts/migrate-urlhash-unique.ts"
+    "admin:hash-password": "tsx scripts/hash-admin-password.ts",
+    "blocklists:fetch": "node scripts/fetch-blocklists.mjs",
+    "config:validate": "tsx scripts/config/validate.ts",
+    "config:compile": "tsx scripts/config/compile.ts",
+    "bench:golden-diff": "tsx bench/golden-diff.ts",
+    "bench:micro": "tsx bench/micro.bench.ts",
+    "bench:http": "tsx bench/http.mjs",
+    "bench:load": "tsx bench/load-10m.mjs",
+    "bench:cold-start": "node bench/cold-start.mjs"
   },
   "dependencies": {
+    "@vercel/functions": "^3.10.6",
+    "botid": "^1.5.12",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "express-rate-limit": "^8.6.2",
     "helmet": "^8.3.0",
-    "mongoose": "^9.9.2"
+    "ioredis": "^6.0.0",
+    "ipaddr.js": "^2.5.0",
+    "mongoose": "^9.9.2",
+    "tldts": "^7.4.19"
   },
   "devDependencies": {
+    "@types/autocannon": "^7.12.7",
+    "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "^26.2.0",
+    "autocannon": "^8.0.0",
+    "tinybench": "^6.2.3",
     "tsx": "^4.23.12",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "zod": "^4.6.7"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
   }
 }

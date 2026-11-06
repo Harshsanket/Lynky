@@ -3,8 +3,13 @@ import mongoose from "mongoose";
 import {
   createShortUrlFromPrepared,
   prepareUrl,
+  ShortCodeExhaustedError,
 } from "../service/url.service.js";
-import { incrementTotalLinks } from "../service/stats.service.js";
+import {
+  applyStageTimingHeaders,
+  createStageTimings,
+} from "../service/stage-timing.service.js";
+import { scheduleTotalLinksIncrement } from "../service/stats.service.js";
 import {
   ApiKeyError,
   decrementApiKeyUsage,
@@ -26,6 +31,8 @@ export const createShortUrlController = async (
   req: Request,
   res: Response
 ) => {
+  const timings = createStageTimings();
+
   try {
     const { url } = req.body ?? {};
 
@@ -48,7 +55,7 @@ export const createShortUrlController = async (
 
     // Validate and clean before reserving quota so bad input never counts
     // against the key's monthly allowance.
-    const prepared = prepareUrl(url);
+    const prepared = prepareUrl(url, timings);
 
     // Reserve the quota slot *before* creating the link so an over-quota key
     // can never sneak a record into the database.
@@ -66,7 +73,11 @@ export const createShortUrlController = async (
     let result;
 
     try {
-      result = await createShortUrlFromPrepared(prepared);
+      result = await createShortUrlFromPrepared(prepared, timings);
+
+      if (timings) {
+        timings.created = result.created;
+      }
     } catch (error) {
       // The slot was reserved but no link was created; give it back.
       if (apiKeyId) {
@@ -82,23 +93,21 @@ export const createShortUrlController = async (
       throw error;
     }
 
-    try {
-      if (result.created) {
-        await incrementTotalLinks();
-      }
-    } catch (error) {
-      logError("STATS INCREMENT ERROR", error, {
-        operation: "incrementTotalLinks",
-        source: "createShortUrlController",
-      });
-    }
+    applyStageTimingHeaders(res, timings);
 
-    return res.status(201).json({
+    const response = res.status(201).json({
       success: true,
       data: {
         shortUrl: result.shortUrl,
       },
     });
+
+    if (result.created) {
+      // Best-effort side effect: coalesced and delivered after the response.
+      scheduleTotalLinksIncrement();
+    }
+
+    return response;
   } catch (error) {
     if (error instanceof ApiKeyError) {
       return res.status(error.statusCode).json({
@@ -107,10 +116,18 @@ export const createShortUrlController = async (
       });
     }
 
+    if (error instanceof ShortCodeExhaustedError) {
+      return res.status(error.statusCode).json({
+        success: false,
+        message: "Unable to generate a short code right now. Please try again.",
+      });
+    }
+
     const isPublic = error instanceof PublicError;
 
     if (!isPublic) {
-      logError("CREATE SHORT URL ERROR", error, {
+      logError("request_error", error, {
+        errorCode: "request_error",
         operation: "createShortUrlController",
       });
     }

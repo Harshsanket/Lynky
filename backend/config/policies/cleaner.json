@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "maxDepth": 3,
+  "genericRedirectUnwrap": false,
+  "genericUnwrapParameters": [
+    "url",
+    "redirect",
+    "redirect_url",
+    "redirecturl",
+    "destination",
+    "dest",
+    "rurl",
+    "ru",
+    "go",
+    "out",
+    "jmp",
+    "link",
+    "ref_url",
+    "original_url",
+    "_url",
+    "href",
+    "uri",
+    "loc"
+  ],
+  "removeJunkFragments": true,
+  "allowDangerousGenericUnwrapParameters": []
+}

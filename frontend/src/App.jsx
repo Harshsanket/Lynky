@@ -7,6 +7,7 @@ import API from "./pages/API";
 import  API_Usage  from "./pages/API_Usage";
 import About from "./pages/About";
 import Blog from "./pages/Blog";
+import SysAdmin from "./pages/SysAdmin";
 
 /**
  * App — route table. All pages render inside `Layout` (header/footer shell).
@@ -21,6 +22,7 @@ function App() {
           <Route path="/api" element={<API />} />
           <Route path="/api/usage" element={<API_Usage />} />
           <Route path="/about" element={<About />} />
+          <Route path="/sysadmin" element={<SysAdmin />} />
           <Route path="*" element={<NotFound />} />
         </Route>
 

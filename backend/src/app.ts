@@ -5,19 +5,29 @@ import type {
   Response,
 } from "express";
 import helmet from "helmet";
+import cookieParser from "cookie-parser";
 import { corsMiddleware } from "../middleware/cors.middleware.js";
 import { jsonMiddleware } from "../middleware/json.middleware.js";
 import { databaseConnectionMiddleware } from "../middleware/database.middleware.js";
 import { rateLimitMiddleware } from "../middleware/rate-limit.middleware.js";
+import { requestContextMiddleware } from "../middleware/request-context.middleware.js";
+import { metricsMiddleware, setMetricErrorCode } from "../service/metrics.service.js";
 import { env } from "./config/env.js";
 import { logError } from "../service/logger.js";
-import { getPublicErrorMessage } from "../service/public-error.service.js";
+import {
+  getPublicErrorMessage,
+  LINK_TOO_LARGE_MESSAGE,
+} from "../service/public-error.service.js";
+import { getRequestContext } from "../service/request-context.service.js";
+import healthRoutes from "../routes/health.routes.js";
 
 import pingRoutes from "../routes/ping.routes.js";
 import urlRoutes from "../routes/url.routes.js";
 import externalApiRoutes from "../routes/external-api.routes.js";
 import apiKeyRoutes from "../routes/api-key.routes.js";
 import statsRoutes from "../routes/stats.routes.js";
+import statusRoutes from "../routes/status.routes.js";
+import adminRoutes from "../routes/admin.routes.js";
 import redirectRoutes from "../routes/redirect.routes.js";
 
 const app = express();
@@ -39,16 +49,35 @@ app.use(
     crossOriginResourcePolicy: { policy: "cross-origin" },
   })
 );
+app.use(requestContextMiddleware);
 app.use(corsMiddleware);
+app.use(cookieParser());
+app.use(metricsMiddleware);
 app.use(jsonMiddleware);
-app.use(rateLimitMiddleware);
 
 /* -------------------------------------------------------------------------- */
 /*  Routes                                                                     */
 /* -------------------------------------------------------------------------- */
 
-// Health check — no database required.
+// Global limit applies to every route, including health/readiness.
+app.use(rateLimitMiddleware);
+
+// Liveness/readiness stay database-independent; the limiter may touch Redis
+// or its memory fallback before these handlers run.
+app.use("/", healthRoutes);
+
+// Compatibility ping.
 app.use("/api/v1", pingRoutes);
+
+// Public cached status/stats. These connect to Mongo only on a cache miss.
+app.use("/api/v1", statusRoutes);
+
+// Sysadmin API (Mongo-backed sessions; no Redis dependency for login).
+app.use(
+  "/sysadmin/api",
+  databaseConnectionMiddleware,
+  adminRoutes
+);
 
 // Public URL shortening (frontend home page). The link limiter is applied on
 // the create route itself so reads do not consume the link budget.
@@ -69,7 +98,7 @@ app.use(
 // API-key management (all endpoints disabled until admin UI exists).
 app.use("/api/v1/api-keys", apiKeyRoutes);
 
-// Global stats counter.
+// Global stats counter (legacy `/stats/links` endpoint).
 app.use("/api/v1", databaseConnectionMiddleware, statsRoutes);
 
 // Short-code redirect: `/<code>` → original (cleaned) destination.
@@ -114,9 +143,14 @@ app.use(
         : 500;
 
     if (status >= 500) {
-      logError("UNHANDLED EXPRESS ERROR", error, {
+      setMetricErrorCode(res, "request_error");
+      logError("request_error", error, {
+        errorCode: "request_error",
         operation: "errorHandler",
+        status,
       });
+    } else if (status === 413) {
+      setMetricErrorCode(res, "request_body_too_large");
     }
 
     return res.status(status).json({
@@ -128,8 +162,9 @@ app.use(
               "Internal server error"
             )
           : status === 413
-            ? "Request body too large"
+            ? LINK_TOO_LARGE_MESSAGE
             : "Invalid request",
+      requestId: getRequestContext()?.requestId ?? null,
     });
   }
 );

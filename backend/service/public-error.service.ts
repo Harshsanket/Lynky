@@ -17,6 +17,9 @@ export class PublicError extends Error {
   }
 }
 
+/** Public copy for the JSON body-size guard. */
+export const LINK_TOO_LARGE_MESSAGE = "Link too large";
+
 /**
  * Pick the message to return to the client.
  *

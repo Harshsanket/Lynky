@@ -2,13 +2,18 @@ import type { Request, Response } from "express";
 import {
   createShortUrlFromPrepared,
   prepareUrl,
+  ShortCodeExhaustedError,
 } from "../service/url.service.js";
+import {
+  applyStageTimingHeaders,
+  createStageTimings,
+} from "../service/stage-timing.service.js";
 import {
   decrementApiKeyUsage,
   getApiKeyUsageById,
   incrementApiKeyUsage,
 } from "../service/api-key.service.js";
-import { incrementTotalLinks } from "../service/stats.service.js";
+import { scheduleTotalLinksIncrement } from "../service/stats.service.js";
 import { logError } from "../service/logger.js";
 import { PublicError, getPublicErrorMessage } from "../service/public-error.service.js";
 import { env } from "../src/config/env.js";
@@ -23,6 +28,8 @@ export const externalShortenController = async (
   req: Request,
   res: Response
 ) => {
+  const timings = createStageTimings();
+
   try {
     const { url } = req.body ?? {};
 
@@ -44,7 +51,7 @@ export const externalShortenController = async (
 
     // Validate and clean before reserving quota so bad input never counts
     // against the key's monthly allowance.
-    const prepared = prepareUrl(url);
+    const prepared = prepareUrl(url, timings);
 
     const incremented = await incrementApiKeyUsage(apiKeyId);
 
@@ -58,7 +65,11 @@ export const externalShortenController = async (
     let result;
 
     try {
-      result = await createShortUrlFromPrepared(prepared);
+      result = await createShortUrlFromPrepared(prepared, timings);
+
+      if (timings) {
+        timings.created = result.created;
+      }
     } catch (error) {
       // The slot was reserved but no link was created; give it back.
       try {
@@ -72,26 +83,31 @@ export const externalShortenController = async (
       throw error;
     }
 
-    try {
-      if (result.created) {
-        await incrementTotalLinks();
-      }
-    } catch (error) {
-      logError("STATS INCREMENT ERROR", error, {
-        operation: "incrementTotalLinks",
-        source: "externalShortenController",
-      });
-    }
+    applyStageTimingHeaders(res, timings);
 
-    return res.status(201).json({
+    const response = res.status(201).json({
       success: true,
       shortUrl: result.shortUrl,
     });
+
+    if (result.created) {
+      scheduleTotalLinksIncrement();
+    }
+
+    return response;
   } catch (error) {
+    if (error instanceof ShortCodeExhaustedError) {
+      return res.status(error.statusCode).json({
+        success: false,
+        message: "Unable to generate a short code right now. Please try again.",
+      });
+    }
+
     const isPublic = error instanceof PublicError;
 
     if (!isPublic) {
-      logError("EXTERNAL SHORTEN ERROR", error, {
+      logError("request_error", error, {
+        errorCode: "request_error",
         operation: "externalShortenController",
       });
     }
@@ -142,7 +158,8 @@ export const readApiKeyUsage = async (
     const isPublic = error instanceof PublicError;
 
     if (!isPublic) {
-      logError("READ USAGE ERROR", error, {
+      logError("request_error", error, {
+        errorCode: "request_error",
         operation: "readApiKeyUsage",
       });
     }

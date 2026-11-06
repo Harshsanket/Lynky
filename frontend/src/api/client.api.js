@@ -32,10 +32,12 @@ export const api = async (endpoint, options = {}) => {
   }
 
   const controller = new AbortController();
-  const timeout = setTimeout(
-    () => controller.abort(),
-    REQUEST_TIMEOUT_MS,
-  );
+  let timedOut = false;
+
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, REQUEST_TIMEOUT_MS);
 
   const abortFromCaller = () => controller.abort();
 
@@ -72,10 +74,32 @@ export const api = async (endpoint, options = {}) => {
     }
 
     if (!response.ok) {
+      if (
+        response.status >= 500 &&
+        typeof window !== "undefined"
+      ) {
+        window.dispatchEvent(new CustomEvent("lynky:api-error"));
+      }
+
       throw new ApiError(response.status, data);
     }
 
     return data;
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw new Error(
+        timedOut
+          ? "Request timed out. Please try again."
+          : "Request cancelled.",
+        { cause: error },
+      );
+    }
+
+    if (typeof window !== "undefined" && !(error instanceof ApiError)) {
+      window.dispatchEvent(new CustomEvent("lynky:api-error"));
+    }
+
+    throw error;
   } finally {
     clearTimeout(timeout);
     options.signal?.removeEventListener("abort", abortFromCaller);

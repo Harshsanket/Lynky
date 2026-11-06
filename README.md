@@ -1,154 +1,231 @@
 # Lynky
-
 Lynky is an open-source URL cleaner and shortener designed to make shared links simpler, cleaner, and less intrusive.
 
 ## Overview
 
-Lynky removes known tracking parameters and unnecessary URL baggage before generating a compact link that is easier to share.
-
-The internet does not operate under one universal standard of privacy, consent, or data protection. Privacy laws differ between countries and regions, and their enforcement differs as well. A surprising amount of information can travel through the links people share: campaign identifiers, referral information, advertising IDs, analytics parameters, tracking tokens, and other metadata not necessary to reach the content itself. Lynky cleans a URL before it is shared, removes known tracking and unnecessary parameters where they can be safely identified, and produces a short link containing only what is necessary to redirect to the cleaned destination. The result is a link that is easier to read, easier to share, and less likely to expose unnecessary tracking information. Short links also avoid filling conversations with excessively long URLs and can reduce unwanted automatic link previews.
-
-Both the frontend and backend source code are publicly available for inspection so that Lynky's behavior can be reviewed rather than simply trusted.
-
-Lynky focuses specifically on information that can be identified and removed at the URL level. It cannot prevent a destination website or application from collecting information after you visit it, including cookies, browser or device fingerprinting, IP-based identification, server-side analytics, authenticated account activity, tracking scripts, request headers, or other tracking mechanisms outside the URL itself. Lynky should be considered a URL-cleaning and link-sharing privacy tool, not a complete anonymity or anti-tracking system.
-
-Lynky is currently in beta. Features, APIs, cleaning rules, infrastructure, and behavior may change. Bugs, outages, incorrect cleaning behavior, and other unexpected issues may occur. Use the service accordingly, particularly when a URL contains important functional parameters.
+Lynky cleans known tracking parameters from a URL before it is shared, shortens the result, and redirects public short links to the cleaned destination. It provides a public web UI, an authenticated shortening API, and a dev-only sysadmin dashboard. The cleaning, storage, redirect, and limit behavior is implemented in a TypeScript/Express backend with a React frontend.
 
 ## Requirements
 
-- Node.js 20.19+ or 22.12+ (Vite 8 requirement)
-- MongoDB instance (backend uses Mongoose)
-- Environment variables (see Configuration)
+- Node.js 22+
+- npm 10+
+- MongoDB 7+
+- Redis 6.2+
+- Local `mongod` and `redis-server` for development
 
 ## Getting Started
 
-Backend:
+Start MongoDB and Redis, then install and configure the backend:
 
 ```sh
 cd backend
-cp .env.example .env
 npm install
+cp .env.example .env
+npm run blocklists:fetch
+npm run config:compile
 npm run dev
 ```
 
-Frontend:
+Edit `backend/.env` before starting: set a real `ENCRYPTION_KEY`, `MONGODB_URI`, `PUBLIC_URL`, and (for production) `FRONTEND_URL`.
+
+Install and start the frontend in a second terminal:
 
 ```sh
 cd frontend
-cp .env.example .env.local
 npm install
+cp .env.example .env.local
 npm run dev
 ```
 
+Local endpoints:
+
+- Web UI: `http://localhost:5173`
+- API: `http://localhost:5001/api/v1`
+- Health/readiness: `http://localhost:5001/health`, `http://localhost:5001/ready`
+- Sysadmin: `http://localhost:5173/sysadmin` (enable `SYSADMIN_ENABLED` and set credentials first)
+
 ## Configuration
 
-Backend environment variables (see `backend/.env.example`):
+Backend values mirror `backend/.env.example`; frontend values mirror `frontend/.env.example`. All examples are placeholders.
+### Core
+| Variable | Example | Meaning |
+|---|---|---|
+| `MONGODB_URI` | `mongodb://127.0.0.1:27017/lynky_example` | MongoDB connection string (required) |
+| `PUBLIC_URL` | `http://localhost:5001` | Public base URL for generated short links; http(s), no query/fragment/credentials, subpath allowed |
+| `ENCRYPTION_KEY` | `a9Pz/oGv9YZMsHZ7xkpchPwfrMWW7dr9eRdupIu8CBI=` | Destination encryption and HMAC key material; at least 32 characters |
+| `EXPIRATION_DAYS` | `3` | Link lifetime in days |
+| `PORT` | `5001` | Backend listen port |
+| `NODE_ENV` | `development` | `development`, `test`, or `production` |
+| `FRONTEND_URL` | `http://localhost:5173` | Allowed frontend origin; required in production |
+| `MIN_CODE_LENGTH` | `4` | Minimum generated short-code length |
+| `MAX_CODE_LENGTH` | `6` | Maximum generated short-code length |
+| `MAX_CODE_ATTEMPTS` | `10` | Short-code retry limit after collisions |
+| `MAX_URL_LENGTH` | `640` | Maximum accepted input URL length |
+| `ALLOW_PRIVATE_SUFFIXES` | `false` | Allow hosts on private public-suffix entries such as `*.eu.org` |
+| `BLOCKLIST_FAILURE_MODE` | `open` | `open` continues creates with degraded readiness; `closed` rejects them |
+| `CONFIG_FULL_RUNTIME_VALIDATION` | `false` | Development-only full artifact validation |
+| `REDIS_URL` | Optional Redis cache URL; memory fallback when unset |
 
-- `MONGODB_URI` - MongoDB connection string (required)
-- `PORT` - server port (default `5001`)
-- `NODE_ENV` - `development` (default), `test`, or `production`
-  (case-insensitive)
-- `FRONTEND_URL` - allowed frontend origin; required when
-  `NODE_ENV=production`
-- `PUBLIC_URL` - public base URL for generated short links (required)
-- `ENCRYPTION_KEY` - encryption key (required)
-- `EXPIRATION_DAYS` - link lifetime in days (required)
-- `MAX_URL_LENGTH` - maximum accepted URL length (default `640`)
-- `MIN_CODE_LENGTH`, `MAX_CODE_LENGTH` - shortcode length bounds
-  (defaults `4`/`6`)
-- `MAX_CODE_ATTEMPTS` - shortcode generation retry limit (default `10`)
-- `API_KEY_LENGTH` - generated API key length (default `45`, minimum `16`)
-- `API_KEY_MONTHLY_LIMIT` - monthly API key usage limit (default `10000`)
+### Limits, caching, and clicks
+| Variable | Example | Meaning |
+|---|---|---|
+| `GLOBAL_RATE_LIMIT_PER_HOUR` | `5000` | Shared global request limit across all routes |
+| `LINK_RATE_LIMIT_PER_15_MIN` | `100` | Per-IP create-route limit (dev/benchmark override; normal default is 100) |
+| `SERVER_STAGE_TIMINGS` | `false` | Dev-only per-stage create timing headers; production rejects `true` |
+| `HOT_VISIT_THRESHOLD` | `4` | Visits before a link is marked hot |
+| `HOT_WINDOW_SECONDS` | `300` | Sliding hot-link window |
+| `HOT_CACHE_TTL_SECONDS` | `900` | Maximum hot-link cache lifetime |
+| `CLICK_STORAGE_MODE` | `hybrid` | `hybrid`, `exact`, or `dynamic` click accounting |
+| `CLICK_EXACT_BELOW_PER_HOUR` | `2000` | Dynamic-mode threshold for write-through clicks |
+| `CLICK_FLUSH_EVERY_N` | `10` | Pending click flush threshold |
+| `CLICK_FLUSH_INTERVAL_MS` | `60000` | Pending click flush interval |
+| `CLICK_PENDING_TTL_SECONDS` | `86400` | Pending click buffer TTL |
+| `API_KEY_MONTHLY_LIMIT` | `10000` | Monthly links per API key |
+| `API_KEY_LENGTH` | `45` | Generated API key length (16–512); changing it invalidates old keys |
 
-Frontend environment variables (see `frontend/.env.example`):
+### Sysadmin
 
-- `VITE_API_URL` - backend API base URL, including `/api/v1`
-- `VITE_IOS_SHORTCUT` - iOS shortcut URL
-- `VITE_API_KEY_MONTHLY_LIMIT` - quota label shown in the API docs
-  (default `10000`)
+| Variable | Example | Meaning |
+|---|---|---|
+| `SYSADMIN_ENABLED` | `false` | Enable the Mongo-session sysadmin dashboard |
+| `SYSADMIN_USERNAME` | `example.admin` | Lowercase letters/dots, 1–15 characters |
+| `SYSADMIN_PASSWORD_HASH` | Hash generated by `npm run admin:hash-password` |
+
+### Frontend
+
+| Variable | Example | Meaning |
+|---|---|---|
+| `VITE_API_URL` | `http://localhost:5001/api/v1` | Backend API base including `/api/v1` |
+| `VITE_SITE_URL` | `http://localhost:5173` | Public site origin for canonical/Open Graph metadata |
+| `VITE_SHORT_URL` | `http://localhost:5001` | Short-link origin used in documentation examples |
+| `VITE_API_KEY_LENGTH` | `45` | Must match backend `API_KEY_LENGTH` |
+| `VITE_MAX_URL_LENGTH` | `640` | Must match backend `MAX_URL_LENGTH` |
+
+Keep the frontend length values aligned with the backend. Vite values are compiled at build time, so changing them requires a frontend rebuild.
 
 ## How It Works
 
-- Removes known tracking parameters from supported URLs.
-- Strips unnecessary URL parameters where they can be safely identified.
-- Preserves parameters and URL fragments that may be required for the destination to function correctly.
-- Produces short, simple, shareable links.
-- Automatically expires shortened links after their configured lifetime.
-- Does not intentionally append its own advertising or tracking parameters.
-- Requires no account for normal use.
-- Makes both frontend and backend source code available for inspection.
-- Keeps the sharing experience simple and intentionally minimal.
+### Link cleaning flow
 
-Lynky's cleaning rules are loaded from configuration files under `backend/config/` (tracking rules, ClearURLs data, URL cleaner). Shortcodes are generated and stored in MongoDB; redirects resolve the shortcode to the cleaned destination.
+A create request parses and validates the input, rejects Lynky's own links, then cleans the URL in a bounded pipeline:
+
+1. Parse the URL and reject unsupported schemes, credentials, private/special-use hosts, and unsafe syntax.
+2. Unwrap known redirect wrappers, up to the configured depth.
+3. Match the destination against compiled provider rules.
+4. Apply the allowlist before any removal; protected parameters always survive.
+5. Remove tracking parameters using global tracker groups, referral rules, raw-URL rules, and provider-specific rules.
+6. Rebuild the URL, re-validate the final destination, then hash, encrypt, and store the cleaned value.
+
+The cleaned URL is what gets deduplicated and stored. The original input is not persisted.
+
+### Algorithms
+
+- Static sets are compiled into a minimal perfect hash (MPHF) with 64-bit verification and exact collision checks.
+- A sorted-hash fallback table handles entries the MPHF cannot place.
+- Provider matching uses a host-hint prefilter, host-suffix walks, and the original provider regex as the final authority.
+- Dedupe uses keyed HMAC-SHA-256 (`urlHash`); redirect lookup uses keyed HMAC-SHA-256 (`codeHash`).
+- Short codes are re-derived from `urlHash + codeSalt`; `codeSalt` makes repeat shorten requests stable across cache loss.
+- Destinations are stored as AES-256-GCM ciphertext; the authentication tag detects corruption.
+
+### Filters
+
+Provider rules compile into exact `Set`, prefix-array, and regex-array classes. Compilation deduplicates and merges overlapping rules, warns about overlaps, and preserves provider order. The allowlist is evaluated before every removal path, so a protected parameter is never stripped by a tracker or referral rule.
+
+### Blocklists
+
+Create-time screening uses HaGeZi wildcard lists (light, NSFW, gambling, URL-shortener), Phishing Army extended, and the URLhaus host file. Lists are compiled into artifacts during `blocklists:fetch` and `config:compile`. Screening checks blocked host suffixes and exact URL keys; own-link detection blocks Lynky's own origins. Redirects never re-run blocklist screening, so a list update cannot break an existing short link.
+
+### Shortening, redirects, and limits
+
+A repeated destination is adopted through its `urlHash` rather than duplicated. Code collisions retry within `MAX_CODE_ATTEMPTS`; exhausted attempts return a clean `503`. Redis caches hot links for at most 15 minutes (default), capped by the link's remaining lifetime; cold and failed cache paths fall back to MongoDB. The global limit is 5,000 requests/hour by default, with a separate per-IP create limit. Click attempts, successes, and failures are buffered and rolled up into minute, hour, day, and month metrics; 5xx errors go to a bounded error log. Admin sessions use a 30-minute sliding idle timeout and an 8-hour absolute cap.
+
+### URL validation
+
+Only public HTTP(S) destinations are accepted. Credentials, localhost/private/special-use networks, internal hostnames, obfuscated IP literals, control/bidi characters, backslash/raw-`@` smuggling, and IDN/`xn--` hosts are rejected on create and redirect. The frontend mirrors cheap checks for feedback, but the backend always re-derives the verdict.
+
+### Config engine
+
+Human-editable rules and blocklists live under `backend/config/`. `npm run config:validate` checks structure, semantics, cross-file references, and blocklist counts. `npm run config:compile` writes deterministic artifacts under `dist/config/compiled/` with source hashes and a manifest. Production loads only compiled artifacts and refuses to start when they are missing or invalid. Trackers, providers, allowlist, and policy fail closed; blocklist availability follows `BLOCKLIST_FAILURE_MODE`. `/ready` reports config, blocklist, database, and cache state. Logs are structured JSON with request IDs and redacted context; raw URLs, queries, headers, API keys, ciphertext, and secrets are never logged.
 
 ## Deployment
 
-Frontend is built with Vite and can be deployed to Vercel (uses
-`@vercel/analytics`). The build requires `VITE_API_URL`. Backend is a
-Node/Express service built with `tsc`; the build also copies `config/` into
-`dist/`, and the service runs via `node dist/src/server.js`. MongoDB is
-required. (Specific hosting setup TBD.)
+The frontend deploys to Vercel. Set `VITE_API_URL` to the backend `/api/v1` URL and `VITE_SITE_URL`/`VITE_SHORT_URL` to the public origins; `frontend/vercel.json` rewrites SPA deep links and includes the BotID challenge/proxy rewrites.
+
+The backend runs on any Node host:
+
+```sh
+cd backend
+npm run build
+npm start
+```
+
+`npm run build` typechecks, copies `config/` into `dist/`, and compiles the deterministic artifacts. `npm start` runs `node dist/src/server.js`. MongoDB is required; managed Redis is recommended but cache-only. Set `NODE_ENV=production`, `MONGODB_URI`, `PUBLIC_URL`, `FRONTEND_URL`, `ENCRYPTION_KEY`, and any `SYSADMIN_*` values. Do not set `SERVER_STAGE_TIMINGS` or other benchmark overrides in production. The benchmark report endpoint and sysadmin section are dev-only.
 
 ## Troubleshooting
 
-- `VITE_API_URL is required` during frontend dev/build: copy
-  `frontend/.env.example` to `frontend/.env.local` and set the API base URL.
-- `Tracking config file not found`: run `npm run build` in `backend/` (it copies
-  `config/` into `dist/`) or start the server from `backend/`.
-- `Database is unavailable`: check `MONGODB_URI`; API routes return `503` until
-  MongoDB is reachable.
+- **413 `Link too large`**: the JSON body exceeded the limit derived from `MAX_URL_LENGTH`; shorten the URL or raise the limit.
+- **429 responses**: the shared global or per-IP create limit was reached; wait for `Retry-After` or adjust the limits for local load tests only.
+- **Database is unavailable / 503**: check `MONGODB_URI` and whether MongoDB is accepting connections.
+- **Blocklist degraded or closed**: check the files and hashes declared in `config/blocklists/sources.json`; `open` continues with degraded readiness, `closed` rejects creates.
+- **Sysadmin login lockout**: three failures in 15 minutes lock the `(IP, username)` pair; wait for the window to expire or clear the local/Redis lockout state.
+- **Stale compiled artifacts**: rerun `npm run blocklists:fetch` and `npm run config:compile`, or `npm run build`.
 
 ## Tests & Scripts
 
-Backend scripts:
+Backend:
 
-- `npm run dev` - run backend in watch mode (tsx)
-- `npm run build` - compile TypeScript and copy `config/` into `dist/`
-- `npm run start` - run compiled server
-- `npm test` - run backend tests (Node test runner). Database integration tests
-  run when `TEST_MONGODB_URI` is set; CI provides MongoDB.
-- `npm run provision:keys` - provision API keys
-- `npm run migrate:urlhash` - migrate URL hash uniqueness
+- `npm test` — unit, integration, config, and failure-path tests via the Node test runner; set `TEST_MONGODB_URI` to run database tests.
+- `node --import tsx --test tests/*.test.ts` — direct test-runner invocation.
+- `npm run build` — typecheck, copy config, and compile artifacts.
+- `npm run config:validate` — validate config sources and blocklists.
+- `npm run config:compile` — emit deterministic compiled artifacts.
+- `npm run blocklists:fetch` — refresh operator-supplied blocklists.
+- `npm run admin:hash-password -- '<password>'` — generate `SYSADMIN_PASSWORD_HASH`.
+- `npm run provision:keys` — provision API keys.
 
-Frontend scripts:
+Frontend:
 
-- `npm run dev` - Vite dev server
-- `npm run build` - production build
-- `npm run lint` - ESLint
-- `npm test` - run frontend tests (Node test runner)
-- `npm run preview` - preview production build
+- `npm test` — frontend unit tests via the Node test runner.
+- `npm run lint` — ESLint.
+- `npm run build` — production Vite build.
+- `npm run dev` — Vite development server.
+- `npm run preview` — preview the production build.
 
 ## Security
 
-- 2026-10-31: backend `npm audit --omit=dev` reports 0 vulnerabilities.
-  Frontend `npm audit --audit-level=high` reports 0 high/critical findings;
-  6 moderate advisories remain in the development-only ESLint/minimatch chain.
-- Verified: `npx tsc --noEmit`, backend/frontend `npm test`, `npm run lint`,
-  and `npm run build` pass.
+Lynky derives separate HMAC keys from `ENCRYPTION_KEY` for URL dedupe, short-code lookup, and code-salt recovery, so a leaked database is not an offline URL-confirmation oracle. Unique `urlHash` and `codeHash` indexes prevent duplicate or placeholder rows, and own-link detection rejects Lynky's own origins. Destinations use AES-256-GCM with authentication tags, so corrupted ciphertext is detected rather than redirected.
+
+Admin sessions use opaque Mongo-backed IDs, a 30-minute sliding idle window, an 8-hour absolute cap, `HttpOnly`/`SameSite=Strict` cookies (`Secure` in production), and CSRF tokens on state changes. Login failures are rate-limited and do not create Mongo auth-failure documents. BotID protects high-value create and usage routes; global and per-IP limits bound traffic.
+
+Production errors are masked: known public validation/policy messages pass through, while internal errors collapse to the generic copy. Logs redact URLs to origins and never include raw URLs, query strings, headers, API keys, ciphertext, or secrets. Config artifacts fail closed when corrupt; blocklist screening is create-time only, so redirects remain stable when lists change.
 
 ## Languages Used
 
-- TypeScript (backend)
-- JavaScript/TypeScript + React (frontend)
-- Tailwind CSS
+- TypeScript for the backend and tooling
+- JavaScript + React for the frontend
+- Tooling: Node test runner, tsx, Vite, Tailwind, gsap
+- No Python in the runtime
 
 ## License
 
-Lynky is source-available for personal and non-commercial use. Commercial use requires a separate paid commercial license and prior written authorization. See [LICENSE.md](./LICENSE.md) for the complete license, restrictions, warranty disclaimer, and limitation of liability.
+Lynky is licensed under the GNU General Public License v3. See [LICENSE](./LICENSE) for the complete license text.
 
 ## About
-Lynky is an open-source URL cleaner and shortener.
-
 
 Proudly made in Mumbai by Harsh Sanket.
-GPT 6.1 Sol by OpenAI was used for development.
 
-For queries, suggestions, or contributions, feel free to reach out: harshsanket.dev@gmail.com
+Claude 5.5 by Anthropic, GLM 5.3 by Z.ai, and DeepSeek 4.1 were used during development.
 
 ## Acknowledgments
-Kevin Roebert / ClearURLs - for the ClearURLs project and its work on identifying and maintaining URL tracking-parameter rules.
-Vercel - application hosting and deployment infrastructure.
-MongoDB - database infrastructure.
+
+- OpenPhish — phishing intelligence (credited source)
+- HaGeZi — DNS blocklists
+- ClearURLs — tracking-parameter rules
+- Phishing Army — phishing domain list
+- URLhaus — malicious URL hostfile
+- Vercel — frontend hosting and deployment
+- Redis — cache
+- MongoDB — primary database
 
 ---
 

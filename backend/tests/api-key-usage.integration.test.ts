@@ -8,7 +8,7 @@ const testMongoUri = process.env.TEST_MONGODB_URI;
 process.env.NODE_ENV = "test";
 process.env.MONGODB_URI =
   testMongoUri ?? "mongodb://127.0.0.1:1/lynky-integration-skipped";
-process.env.ENCRYPTION_KEY = "test-encryption-key";
+process.env.ENCRYPTION_KEY = "test-encryption-key-0123456789abcdef";
 process.env.PUBLIC_URL = "https://lynky.test";
 process.env.EXPIRATION_DAYS = "30";
 process.env.API_KEY_MONTHLY_LIMIT = "10000";

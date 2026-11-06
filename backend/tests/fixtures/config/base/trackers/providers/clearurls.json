@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "providers": [
+    {
+      "id": "example",
+      "urlPattern": "^https?:\\/\\/example\\.com",
+      "hostHints": [],
+      "completeProvider": false,
+      "rules": [
+        "utm_source"
+      ],
+      "referralMarketing": [],
+      "exceptions": [],
+      "redirections": [],
+      "rawRules": []
+    }
+  ]
+}

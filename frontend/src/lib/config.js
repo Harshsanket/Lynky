@@ -1,13 +1,22 @@
 /**
- * Public configuration exposed to the API documentation page.
+ * Public configuration exposed to the UI.
  *
- * The backend owns the real monthly limit; this value only controls the
- * label shown in the UI. Keep it in sync via `VITE_API_KEY_MONTHLY_LIMIT`.
+ * These are build-time Vite values. Only expose what the frontend needs to
+ * construct a valid request; backend policy (quota, expiry, code lengths)
+ * remains authoritative and is displayed from API responses instead.
  */
 
-const configuredLimit = Number(import.meta.env.VITE_API_KEY_MONTHLY_LIMIT);
+const env = import.meta.env ?? {};
 
-export const MONTHLY_LIMIT_LABEL =
-  Number.isFinite(configuredLimit) && configuredLimit > 0
-    ? configuredLimit.toLocaleString()
-    : '10,000';
+const stripTrailingSlash = (value) => value.replace(/\/$/, '');
+
+export const SITE_URL = stripTrailingSlash(
+  env.VITE_SITE_URL ||
+    (typeof window !== 'undefined'
+      ? window.location.origin
+      : 'http://localhost:5173'),
+);
+
+export const SHORT_URL = stripTrailingSlash(
+  env.VITE_SHORT_URL || 'http://localhost:5001',
+);

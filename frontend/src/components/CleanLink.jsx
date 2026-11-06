@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Clipboard,
   ArrowRight,
@@ -9,30 +9,14 @@ import {
 } from 'lucide-react';
 
 import { createShortUrl } from '../api/url.api';
+import { validateUrlInput, MESSAGES } from '../lib/url-validation';
 
 const COOLDOWN_MS = 2000;
 
-const INVALID_URL_MESSAGE =
-  "That doesn't look like a valid URL — paste the full link, including https://";
+const INVALID_URL_MESSAGE = MESSAGES.invalid;
 
-/**
- * Whether the input is a non-empty HTTP(S) URL with a host. Everything else
- * (plain text, javascript:, data:, etc.) is rejected before it reaches the API.
- */
-const isValidUrl = (value) => {
-  if (!value || typeof value !== 'string') return false;
-
-  const trimmed = value.trim();
-
-  if (!trimmed || trimmed.includes('\\')) return false;
-
-  try {
-    const parsed = new URL(trimmed);
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
-  } catch {
-    return false;
-  }
-};
+/* Pre-flight preference: no local helper; `validateUrlInput` mirrors the
+ * backend's cheap checks and the server remains the gate. */
 
 /**
  * UrlCleaner — the home page's interactive cleaner.
@@ -53,6 +37,17 @@ function UrlCleaner() {
   const [cooldown, setCooldown] = useState(false);
 
   const cooldownTimer = useRef(null);
+  const copyTimer = useRef(null);
+  const pasteTimer = useRef(null);
+
+  useEffect(
+    () => () => {
+      clearTimeout(cooldownTimer.current);
+      clearTimeout(copyTimer.current);
+      clearTimeout(pasteTimer.current);
+    },
+    [],
+  );
 
   function triggerCooldown() {
     setCooldown(true);
@@ -69,9 +64,11 @@ function UrlCleaner() {
 
     if (!url || loading || cooldown || result) return;
 
-    if (!isValidUrl(url)) {
+    const check = validateUrlInput(url);
+
+    if (!check.valid) {
       setError(true);
-      setErrorMessage(INVALID_URL_MESSAGE);
+      setErrorMessage(check.message);
       return;
     }
 
@@ -84,6 +81,9 @@ function UrlCleaner() {
       const response = await createShortUrl(url);
 
       setResult(response.data.shortUrl);
+
+      // Let the global counter refresh after a successful create.
+      window.dispatchEvent(new Event('lynky:links-updated'));
     } catch (error) {
       console.error('Failed to shorten URL:', error);
 
@@ -130,7 +130,8 @@ function UrlCleaner() {
 
     setInput(pasted);
 
-    setTimeout(() => {
+    clearTimeout(pasteTimer.current);
+    pasteTimer.current = setTimeout(() => {
       runShortener(pasted);
     }, 0);
   }
@@ -151,7 +152,8 @@ function UrlCleaner() {
 
       setCopied(true);
 
-      setTimeout(() => {
+      clearTimeout(copyTimer.current);
+      copyTimer.current = setTimeout(() => {
         setCopied(false);
       }, 1500);
     } catch {
@@ -311,6 +313,7 @@ function UrlCleaner() {
 
         {error && (
           <p
+            role="alert"
             className="mt-3 text-xs"
             style={{
               fontFamily: 'var(--font-body)',

@@ -1,47 +1,46 @@
 /**
- * ParamLedger — table of the Amazon query parameters from the teardown, with
- * a plain-language description of what each one appears to carry.
+ * ParamLedger — table of the query parameters from the teardown, with a
+ * plain-language description of what each one appears to carry.
  */
 
 import { mono, body } from "../../lib/theme";
 
 const PARAMS = [
   {
-    name: "ref=sr_1_3",
-    purpose:
-      "Attribution indicating this product was reached from a particular search-result position.",
+    name: "utm_source=google",
+    purpose: "Which site sent the visitor here.",
   },
   {
-    name: "crid=4F9BF…",
-    purpose: "An identifier associated with the search request that produced the result.",
+    name: "utm_medium=cpc",
+    purpose: "The kind of channel that produced the visit — here, a paid click.",
   },
   {
-    name: "dib=eyJ2…",
-    purpose: "Encoded search or recommendation context used internally by Amazon.",
+    name: "utm_campaign=summer",
+    purpose: "The marketing campaign name the sender assigned to this link.",
   },
   {
-    name: "dib_tag=se",
-    purpose: "A small flag associated with the encoded search context.",
+    name: "utm_content=cpc-banner",
+    purpose: "Which creative or placement inside the campaign was clicked.",
   },
   {
-    name: "keywords=iphone+17+pro+max",
-    purpose: "The search phrase that led to the product.",
+    name: "gclid=Eh0iCj…",
+    purpose: "Google Ads click identifier attached to the destination URL.",
   },
   {
-    name: "qid=1786806495",
-    purpose: "An identifier associated with when the search request was produced.",
+    name: "fbclid=IwAR2…",
+    purpose: "Meta (Facebook) click identifier attached to the destination URL.",
   },
   {
-    name: "sprefix=…",
-    purpose: "Autocomplete and search-scope state carried from the search page.",
+    name: "mc_cid=61d2e3",
+    purpose: "Mailchimp campaign identifier for the email that shared this link.",
   },
   {
-    name: "sr=8-3",
-    purpose: "Search-result positioning or ranking context.",
+    name: "mc_eid=aa8f6f",
+    purpose: "Per-recipient identifier for the specific email subscriber.",
   },
   {
-    name: "th=1",
-    purpose: "Interface or variant state. It is not needed to identify the product.",
+    name: "ref=homepage",
+    purpose: "A label for the page the visitor came from.",
   },
 ];
 

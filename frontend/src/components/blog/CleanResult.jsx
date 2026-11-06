@@ -24,7 +24,7 @@ export default function CleanResult() {
       </div>
 
       <p className="break-all px-5 py-6 text-sm sm:text-base" style={{ ...mono, color: "var(--color-clean)" }}>
-        https://www.amazon.in/dp/B0FQFW4MVJ
+        https://www.example.com/products/42
       </p>
     </div>
   );

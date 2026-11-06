@@ -8,11 +8,11 @@ import { mono, body } from "../../lib/theme";
 import FigureFrame from "./FigureFrame";
 
 const NODES = [
-  { n: "01", label: "clean", note: "rules remove known noise", tone: "dirty" },
-  { n: "02", label: "code", note: "4–6 character identifier", tone: "neutral" },
-  { n: "03", label: "encrypt", note: "AES-256-GCM", tone: "neutral" },
-  { n: "04", label: "store", note: "temporary record", tone: "clean" },
-  { n: "05", label: "expire", note: "deleted at expiry", tone: "clean" },
+  { n: "01", label: "validate", note: "length, shape, security", tone: "neutral" },
+  { n: "02", label: "clean", note: "tracking params + wrappers", tone: "dirty" },
+  { n: "03", label: "derive", note: "urlHash + codeSalt", tone: "neutral" },
+  { n: "04", label: "store", note: "AES-256-GCM + hashes", tone: "neutral" },
+  { n: "05", label: "redirect", note: "cache + metrics", tone: "clean" },
 ];
 
 const toneColor = (tone) => {
@@ -24,12 +24,12 @@ const toneColor = (tone) => {
 export default function PipelineFigure() {
   return (
     <FigureFrame
-      index="04"
-      title="The short link is the end of a small pipeline."
-      note="inside Lynky"
+      index="01"
+      title="From paste to a cached redirect record."
+      note="full path"
     >
       <div className="overflow-x-auto px-5 py-9 sm:px-6">
-        <div className="flex min-w-150 items-stretch">
+        <div className="flex min-w-175 items-stretch">
           {NODES.map((node, index) => {
             const color = toneColor(node.tone);
 

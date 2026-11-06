@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
-import { getTotalLinks } from "../api/stats.api";
+import { getStatus, refreshStatus } from "../lib/status-cache";
+
+const LINKS_UPDATED_EVENT = "lynky:links-updated";
 
 /**
  * LinkCounter — pill showing the global "links cleaned & shortened" count.
- * Renders nothing while loading or when the backend is unreachable.
+ * Reads the same cached `/status` response as ServerStatus and refreshes after
+ * a successful shorten, throttled by the cache to at most once per 30s.
  */
 const LinkCounter = () => {
   const [total, setTotal] = useState(null);
@@ -11,16 +14,27 @@ const LinkCounter = () => {
   useEffect(() => {
     let cancelled = false;
 
-    getTotalLinks()
-      .then((count) => {
-        if (!cancelled) setTotal(count);
-      })
-      .catch(() => {
-        if (!cancelled) setTotal(null);
-      });
+    const apply = (result) => {
+      if (
+        !cancelled &&
+        typeof result?.totalLinks === "number" &&
+        Number.isFinite(result.totalLinks)
+      ) {
+        setTotal(result.totalLinks);
+      }
+    };
+
+    getStatus().then(apply).catch(() => undefined);
+
+    const refresh = () => {
+      refreshStatus().then(apply).catch(() => undefined);
+    };
+
+    window.addEventListener(LINKS_UPDATED_EVENT, refresh);
 
     return () => {
       cancelled = true;
+      window.removeEventListener(LINKS_UPDATED_EVENT, refresh);
     };
   }, []);
 

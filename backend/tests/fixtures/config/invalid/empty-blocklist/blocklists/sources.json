@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "sources": [
+    {
+      "file": "valid.txt",
+      "format": "domains",
+      "required": true,
+      "minEntries": 1
+    }
+  ]
+}

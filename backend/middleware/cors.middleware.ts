@@ -25,10 +25,22 @@ export const corsMiddleware = cors({
 
   methods: ["GET", "POST", "OPTIONS"],
 
-  allowedHeaders: ["Content-Type", "Authorization"],
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "X-Request-Id",
+    "X-CSRF-Token",
+  ],
+  exposedHeaders: [
+    "X-Request-Id",
+    "Retry-After",
+    "X-RateLimit-Limit",
+    "X-RateLimit-Remaining",
+    "X-RateLimit-Reset",
+  ],
 
-  // No cookies or other credentialed requests are used.
-  credentials: false,
+  // Sysadmin sessions use a cookie; the origin allowlist above is the boundary.
+  credentials: true,
 
   optionsSuccessStatus: 204,
 });

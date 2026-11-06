@@ -1,7 +1,10 @@
 import crypto from "node:crypto";
 import { env } from "../src/config/env.js";
 
-const BASE62 = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+export const BASE62_ALPHABET =
+  "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+const BASE62 = BASE62_ALPHABET;
 
 /**
  * Random code length within the configured [MIN, MAX] range.

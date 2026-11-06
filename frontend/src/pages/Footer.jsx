@@ -10,7 +10,7 @@ const Footer = () => {
     >
       <div className="flex w-full items-center justify-between px-6 py-6 sm:px-8">
         <span className="text-sm" style={{ fontFamily: 'var(--font-mono)' }}>
-          lynky — a{' '}
+          a{' '}
           <b style={{ color: 'var(--color-ink)' }}>
             <a
               href="https://github.com/Harshsanket"
@@ -20,7 +20,7 @@ const Footer = () => {
               Harsh Sanket
             </a>
           </b>{' '}
-          productions
+          production
         </span>
 
         <span className="text-sm" style={{ fontFamily: 'var(--font-mono)' }}>

@@ -11,7 +11,6 @@ import Section from "../components/Section";
 import CodeFrame from "../components/api/CodeFrame";
 import DetailRow from "../components/api/DetailRow";
 import AccessPanel from "../components/api/AccessPanel";
-import { MONTHLY_LIMIT_LABEL } from "../lib/config";
 
 const API = () => {
   return (
@@ -85,7 +84,7 @@ const API = () => {
 
           <DetailRow label="output" value="shortUrl" tone="clean" note="The cleaned destination represented by a Lynky short URL." />
 
-          <DetailRow label="quota" value={`${MONTHLY_LIMIT_LABEL} / month`} tone="dirty" note="Applied per API secret." />
+          <DetailRow label="quota" value="Monthly allowance" tone="dirty" note="Applied per API secret. The usage page reports the current limit and consumption; every successful create request counts, including ones that return an already-stored matching link." />
         </div>
       </Section>
 

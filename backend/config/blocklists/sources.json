@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "sources": [
+    {
+      "file": "hagezi-list-light.txt",
+      "format": "wildcard-domains",
+      "required": true,
+      "minEntries": 10000,
+      "sourceUrl": "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/light.txt",
+      "license": "https://github.com/hagezi/dns-blocklists/blob/main/LICENSE"
+    },
+    {
+      "file": "nsfw-onlydomains.txt",
+      "format": "domains",
+      "required": false,
+      "minEntries": 10000,
+      "sourceUrl": "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/nsfw-onlydomains.txt",
+      "license": "https://github.com/hagezi/dns-blocklists/blob/main/LICENSE"
+    },
+    {
+      "file": "gambling-onlydomains.txt",
+      "format": "domains",
+      "required": false,
+      "minEntries": 10000,
+      "sourceUrl": "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/gambling-onlydomains.txt",
+      "license": "https://github.com/hagezi/dns-blocklists/blob/main/LICENSE"
+    },
+    {
+      "file": "urlshortener-onlydomains.txt",
+      "format": "domains",
+      "required": false,
+      "minEntries": 1000,
+      "sourceUrl": "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/urlshortener-onlydomains.txt",
+      "license": "https://github.com/hagezi/dns-blocklists/blob/main/LICENSE"
+    },
+    {
+      "file": "phishing-domains.txt",
+      "format": "auto",
+      "required": false,
+      "minEntries": 10000,
+      "sourceUrl": "https://phishing.army/download/phishing_army_blocklist_extended.txt",
+      "license": "https://phishing.army/"
+    },
+    {
+      "file": "urlhaus.txt",
+      "format": "hosts-file",
+      "required": false,
+      "minEntries": 1,
+      "sourceUrl": "https://urlhaus.abuse.ch/downloads/hostfile/",
+      "license": "https://urlhaus.abuse.ch/api/"
+    }
+  ]
+}

@@ -10,6 +10,7 @@ export default function LinkRow({ label, value, href }) {
       href={href}
       target="_blank"
       rel="noreferrer"
+      aria-label={`${label}: ${value}`}
       className="group grid border-t py-4 first:border-t-0 sm:grid-cols-[120px_1fr_auto] sm:items-center"
       style={{ borderColor: "var(--color-border)" }}
     >

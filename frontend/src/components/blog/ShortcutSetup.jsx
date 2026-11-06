@@ -5,15 +5,17 @@
 
 import { mono, body } from "../../lib/theme";
 
+const SHORTCUT_URL = import.meta.env.VITE_IOS_SHORTCUT?.trim();
+
 const SHORTCUT_STEPS = [
   {
     n: "01",
     title: "Add the Shortcut",
-    text: (
+    text: SHORTCUT_URL ? (
       <>
         Tap{" "}
         <a
-          href={import.meta.env.VITE_IOS_SHORTCUT}
+          href={SHORTCUT_URL}
           target="_blank"
           rel="noreferrer"
           className="underline underline-offset-4 transition-opacity hover:opacity-60"
@@ -22,6 +24,11 @@ const SHORTCUT_STEPS = [
           get shortcut
         </a>{" "}
         on your iPhone and add it to Shortcuts.
+      </>
+    ) : (
+      <>
+        The ready-made Shortcut file is not published yet. Contact the address
+        at the bottom of this section to get it, then add it to Shortcuts.
       </>
     ),
   },
@@ -100,15 +107,24 @@ export default function ShortcutSetup() {
           </p>
         </div>
 
-        <a
-          href={import.meta.env.VITE_IOS_SHORTCUT}
-          target="_blank"
-          rel="noreferrer"
-          className="w-fit shrink-0 border px-4 py-2.5 text-xs transition-opacity hover:opacity-60"
-          style={{ ...mono, borderColor: "var(--color-clean)", color: "var(--color-clean)" }}
-        >
-          get shortcut ↗
-        </a>
+        {SHORTCUT_URL ? (
+          <a
+            href={SHORTCUT_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="w-fit shrink-0 border px-4 py-2.5 text-xs transition-opacity hover:opacity-60"
+            style={{ ...mono, borderColor: "var(--color-clean)", color: "var(--color-clean)" }}
+          >
+            get shortcut ↗
+          </a>
+        ) : (
+          <span
+            className="w-fit shrink-0 border px-4 py-2.5 text-xs"
+            style={{ ...mono, borderColor: "var(--color-border)", color: "var(--color-ink-soft)" }}
+          >
+            link not published yet
+          </span>
+        )}
       </div>
 
       {SHORTCUT_STEPS.map((step) => (

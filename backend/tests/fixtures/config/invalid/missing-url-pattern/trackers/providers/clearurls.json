@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "providers": [
+    {
+      "id": "broken",
+      "hostHints": [],
+      "completeProvider": false,
+      "rules": []
+    }
+  ]
+}

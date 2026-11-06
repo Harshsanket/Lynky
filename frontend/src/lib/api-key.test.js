@@ -2,43 +2,77 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  API_KEY_MAX_INPUT_LENGTH,
+  API_KEY_LENGTH,
   isValidApiKey,
+  isValidApiKeyForLength,
   sanitizeApiKey,
 } from './api-key.js';
 
-const keyOfLength = (length) => 'A'.repeat(length);
+const keyOfLength = (length, character = 'A') =>
+  character.repeat(length);
 
-test('accepts legacy 43-character keys', () => {
-  assert.equal(isValidApiKey(keyOfLength(43)), true);
-});
-
-test('accepts current 45-character keys', () => {
+test('defaults to the backend 45-character length', () => {
+  assert.equal(API_KEY_LENGTH, 45);
   assert.equal(isValidApiKey(keyOfLength(45)), true);
 });
 
-test('accepts keys configured to other lengths', () => {
-  assert.equal(isValidApiKey(keyOfLength(16)), true);
-  assert.equal(isValidApiKey(keyOfLength(64)), true);
-  assert.equal(isValidApiKey(keyOfLength(128)), true);
+test('accepts every configured length the backend permits', () => {
+  for (const length of [16, 45, 64]) {
+    assert.equal(
+      isValidApiKeyForLength(keyOfLength(length), length),
+      true,
+      `length ${length} should be accepted`,
+    );
+  }
 });
 
-test('rejects empty input', () => {
-  assert.equal(isValidApiKey(''), false);
+test('requires the exact configured length', () => {
+  for (const length of [16, 43, 44, 46, 64]) {
+    assert.equal(
+      isValidApiKey(keyOfLength(length)),
+      false,
+      `length ${length} should be rejected`,
+    );
+  }
 });
 
-test('rejects non-base64url input', () => {
-  assert.equal(isValidApiKey('not a key!'), false);
+test('only accepts base64url generator characters', () => {
+  const key = keyOfLength(API_KEY_LENGTH);
+
+  assert.equal(isValidApiKey(key), true);
+  assert.equal(
+    isValidApiKey(`${keyOfLength(API_KEY_LENGTH - 1)}-`),
+    true,
+  );
+
+  for (const invalid of [
+    '',
+    ` ${keyOfLength(API_KEY_LENGTH - 1)}`,
+    `${keyOfLength(API_KEY_LENGTH - 1)} `,
+    `${keyOfLength(API_KEY_LENGTH - 1)}+`,
+    `${keyOfLength(API_KEY_LENGTH - 1)}/`,
+    `${keyOfLength(API_KEY_LENGTH - 1)}=`,
+    `${keyOfLength(API_KEY_LENGTH - 1)}é`,
+    null,
+    45,
+    {},
+    [],
+    undefined,
+  ]) {
+    assert.equal(
+      isValidApiKey(invalid),
+      false,
+      `${JSON.stringify(invalid)} should be rejected`,
+    );
+  }
 });
 
-test('sanitizes pasted whitespace and separators', () => {
+test('sanitizes only outer whitespace and caps the input', () => {
   assert.equal(sanitizeApiKey('  abc-123_XYZ  '), 'abc-123_XYZ');
-  assert.equal(sanitizeApiKey('abc/def+ghi='), 'abcdefghi');
-});
+  assert.equal(sanitizeApiKey('abc/def+ghi='), 'abc/def+ghi=');
 
-test('caps input at the maximum length', () => {
-  const oversized = keyOfLength(API_KEY_MAX_INPUT_LENGTH + 50);
+  const oversized = keyOfLength(API_KEY_LENGTH + 50);
 
-  assert.equal(sanitizeApiKey(oversized).length, API_KEY_MAX_INPUT_LENGTH);
+  assert.equal(sanitizeApiKey(oversized).length, API_KEY_LENGTH);
   assert.equal(isValidApiKey(oversized), false);
 });

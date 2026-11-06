@@ -1,5 +1,24 @@
+import { useEffect } from "react";
+import { Link, useLocation } from "react-router";
+
 /** 404 page — shown for any unmatched route. */
 export default function NotFound() {
+  const location = useLocation();
+  const host =
+    typeof window !== "undefined" ? window.location.host : "lynky";
+
+  useEffect(() => {
+    const code = new URLSearchParams(location.search).get("code");
+
+    if (code) {
+      try {
+        window.sessionStorage.setItem("lynky:invalid-code", code);
+      } catch {
+        // Session storage can be unavailable; this marker is optional UX only.
+      }
+    }
+  }, [location.search]);
+
   return (
     <div className="flex  flex-col bg-bg font-body text-ink">
       <div className="paper-grain pointer-events-none fixed inset-0" />
@@ -15,8 +34,8 @@ export default function NotFound() {
           </h1>
 
           <p className="max-w-md text-base leading-relaxed text-ink-soft sm:text-lg">
-            Either it never existed, or it got cleaned a little too well.
-            Let's get you back to somewhere real.
+            This short link is unavailable. Either it never existed, or it got
+            cleaned a little too well. Let's get you back to somewhere real.
           </p>
 
           <div className="w-full max-w-md rounded-lg border border-border bg-bg-alt">
@@ -52,17 +71,20 @@ export default function NotFound() {
 
             <div className="px-4 py-4">
               <p className="break-all font-mono text-sm text-dirty line-through decoration-1">
-                lynky.to{typeof window !== "undefined" ? window.location.pathname : "/whatever-you-typed"}
+                {host}
+                {typeof window !== "undefined"
+                  ? window.location.pathname
+                  : "/whatever-you-typed"}
               </p>
             </div>
           </div>
 
-          <a
-            href="/"
+          <Link
+            to="/"
             className="mt-2 underline rounded-md bg-ink px-5 py-3 text-sm font-medium text-bg-alt transition-opacity hover:opacity-90"
           >
             <b>Back to lynky</b>
-          </a>
+          </Link>
         </main>
 
       </div>
