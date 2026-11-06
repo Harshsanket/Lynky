@@ -7,7 +7,7 @@ Lynky cleans known tracking parameters from a URL before it is shared, shortens 
 
 ## Requirements
 
-- Node.js 22+
+- Node.js 26+
 - npm 10+
 - MongoDB 7+
 - Redis 6.2+
