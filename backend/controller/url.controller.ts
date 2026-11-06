@@ -17,6 +17,10 @@ import {
   incrementApiKeyUsage,
 } from "../service/api-key.service.js";
 import { logError } from "../service/logger.js";
+import {
+  markRequestMetric,
+  setMetricErrorCode,
+} from "../service/metrics.service.js";
 import { PublicError, getPublicErrorMessage } from "../service/public-error.service.js";
 import { extractBearerSecret } from "../src/utils/http.js";
 import { env } from "../src/config/env.js";
@@ -117,6 +121,9 @@ export const createShortUrlController = async (
     }
 
     if (error instanceof ShortCodeExhaustedError) {
+      markRequestMetric(res, "shortCodeExhausted");
+      setMetricErrorCode(res, "short_code_exhausted");
+
       return res.status(error.statusCode).json({
         success: false,
         message: "Unable to generate a short code right now. Please try again.",

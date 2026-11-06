@@ -20,6 +20,7 @@ export interface RequestMetricFields {
   redisCalls: number;
   botBlocks: number;
   authFailures: number;
+  shortCodeExhausted: number;
 }
 
 export const emptyRequestMetrics = (): RequestMetricFields => ({
@@ -31,6 +32,7 @@ export const emptyRequestMetrics = (): RequestMetricFields => ({
   redisCalls: 0,
   botBlocks: 0,
   authFailures: 0,
+  shortCodeExhausted: 0,
 });
 
 export const markRequestMetric = (
@@ -79,6 +81,7 @@ const ROLLUP_FIELDS = [
   "errorCount",
   "botBlocks",
   "authFailures",
+  "shortCodeExhausted",
 ] as const;
 
 let lastFlushAt = 0;
@@ -395,6 +398,7 @@ export interface DashboardMetrics {
     redisHit: number;
     redisMiss: number;
   };
+  shortCodeExhausted: number;
   latency: {
     create: LatencySummary;
     redirect: LatencySummary;
@@ -469,6 +473,10 @@ export const getDashboardMetrics = async (): Promise<DashboardMetrics> => {
     }),
     { cacheHit: 0, cacheMiss: 0, redisHit: 0, redisMiss: 0 }
   );
+  const shortCodeExhausted = hourly.reduce(
+    (sum, entry) => sum + (entry.shortCodeExhausted ?? 0),
+    0
+  );
 
   return {
     stats,
@@ -478,6 +486,7 @@ export const getDashboardMetrics = async (): Promise<DashboardMetrics> => {
     telemetry,
     errors,
     cache,
+    shortCodeExhausted,
     latency: {
       create: summarizeLatency(
         hourly.filter((entry) => CREATE_ROUTES.has(entry.route))

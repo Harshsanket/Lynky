@@ -26,6 +26,7 @@ export interface IMetricRollup extends Document {
   errorCount: number;
   botBlocks: number;
   authFailures: number;
+  shortCodeExhausted: number;
   eventLoopLagP99Ms?: number;
   eventLoopLagMaxMs?: number;
   rssMb?: number;
@@ -55,6 +56,7 @@ const metricFields = {
   errorCount: { type: Number, default: 0, min: 0 },
   botBlocks: { type: Number, default: 0, min: 0 },
   authFailures: { type: Number, default: 0, min: 0 },
+  shortCodeExhausted: { type: Number, default: 0, min: 0 },
   eventLoopLagP99Ms: { type: Number, default: 0, min: 0 },
   eventLoopLagMaxMs: { type: Number, default: 0, min: 0 },
   rssMb: { type: Number, default: 0, min: 0 },

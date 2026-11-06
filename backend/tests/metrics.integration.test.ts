@@ -38,6 +38,7 @@ setCacheStoreForTests(new MemoryCacheStore());
 
 const run = testMongoUri ? test : test.skip;
 const route = "/test-metrics";
+const failureRoute = "/test-short-code-exhausted";
 
 before(async () => {
   if (!testMongoUri) return;
@@ -49,13 +50,15 @@ after(async () => {
   if (!testMongoUri) return;
 
   await Promise.all([
-    MetricsMinute.deleteMany({ route }),
+    MetricsMinute.deleteMany({ route: { $in: [route, failureRoute] } }),
     MetricsHour.deleteMany({
-      route: { $in: [route, "/api/v1/urls", "/:code"] },
+      route: {
+        $in: [route, failureRoute, "/api/v1/urls", "/:code"],
+      },
     }),
-    MetricsDaily.deleteMany({ route }),
-    MetricsMonthly.deleteMany({ route }),
-    ErrorLog.deleteMany({ route }),
+    MetricsDaily.deleteMany({ route: { $in: [route, failureRoute] } }),
+    MetricsMonthly.deleteMany({ route: { $in: [route, failureRoute] } }),
+    ErrorLog.deleteMany({ route: { $in: [route, failureRoute] } }),
   ]);
   await mongoose.disconnect();
 });
@@ -110,6 +113,40 @@ run("writes an ErrorLog for 5xx responses", async () => {
   assert.equal(error?.status, 500);
   assert.equal(error?.errorCode, "test_error");
   assert.ok(error?.expireAt instanceof Date);
+});
+
+run("counts short-code exhaustion and records its error code", async () => {
+  const res = {
+    statusCode: 503,
+    locals: {
+      metrics: emptyRequestMetrics(),
+      errorCode: "short_code_exhausted",
+    },
+  } as any;
+
+  res.locals.metrics.shortCodeExhausted = 2;
+
+  await recordRequestMetrics(
+    { baseUrl: failureRoute, route: { path: "" } } as any,
+    res,
+    10
+  );
+
+  const minute = Math.floor(Date.now() / 60_000);
+
+  await flushMetricsForTests(minute);
+
+  const doc = await MetricsMinute.findOne({ route: failureRoute }).lean();
+
+  assert.equal(doc?.shortCodeExhausted, 2);
+  assert.equal(doc?.status5xx, 1);
+
+  const error = await ErrorLog.findOne({
+    route: failureRoute,
+    errorCode: "short_code_exhausted",
+  }).lean();
+
+  assert.ok(error);
 });
 
 run("declares the expected TTL indexes", async () => {

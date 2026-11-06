@@ -268,6 +268,7 @@ const SysAdmin = () => {
 
   const stats = metrics?.stats ?? {};
   const cache = metrics?.cache ?? {};
+  const shortCodeExhausted = metrics?.shortCodeExhausted ?? 0;
   const latency = metrics?.latency ?? {
     create: {},
     redirect: {},
@@ -356,6 +357,11 @@ const SysAdmin = () => {
         <MetricCard
           label="failed clicks"
           value={formatNumber(stats.totalClicksFailed)}
+        />
+        <MetricCard
+          label="short-code exhaustion (24h)"
+          value={formatNumber(shortCodeExhausted)}
+          hint="real 503s after all attempts"
         />
         <MetricCard
           label="link generation latency"

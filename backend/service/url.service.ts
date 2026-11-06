@@ -230,6 +230,59 @@ const adoptExistingLink = async (
   throw new ShortCodeExhaustedError();
 };
 
+type UrlHashAdoption =
+  | {
+      status: "adopted";
+      result: NonNullable<Awaited<ReturnType<typeof adoptExistingLink>>>;
+    }
+  | { status: "missing" | "retry" };
+
+/**
+ * Adopt the row that won a concurrent insert for the same destination.
+ * Returns `missing` when no row exists and `retry` when the winner expired or
+ * disappeared before it could be updated.
+ */
+const adoptByUrlHash = async (
+  urlHash: string,
+  cleanedUrl: string,
+  timings: StageTimings | null
+): Promise<UrlHashAdoption> => {
+  const winner = await measureStage(
+    timings,
+    "dedupeMs",
+    () => findLinkByUrlHash(urlHash)
+  );
+
+  if (!winner) {
+    return { status: "missing" };
+  }
+
+  if (new Date(winner.expiresAt).getTime() <= Date.now()) {
+    await measureStage(
+      timings,
+      "insertMs",
+      () =>
+        Link.deleteOne({
+          _id: (winner as any)._id,
+          expiresAt: { $lte: new Date() },
+        })
+    );
+
+    return { status: "retry" };
+  }
+
+  const adopted = await adoptExistingLink(
+    winner,
+    cleanedUrl,
+    urlHash,
+    timings
+  );
+
+  return adopted
+    ? { status: "adopted", result: adopted }
+    : { status: "retry" };
+};
+
 export interface PreparedUrl {
   cleanedUrl: string;
   urlHash: string;
@@ -366,46 +419,35 @@ export const createShortUrlFromPrepared = async (
       }
 
       const collidingIndex = getCollidingIndex(error);
-
-      // Lost the dedupe race: another request inserted this destination
-      // first. Adopt its row rather than creating a duplicate record.
-      if (
+      const urlHashCollision =
         collidingIndex === "urlHash" ||
-        collidingIndex?.includes("urlHash")
-      ) {
-        const winner = await measureStage(
-          timings,
-          "dedupeMs",
-          () => findLinkByUrlHash(urlHash)
+        collidingIndex?.includes("urlHash");
+
+      /*
+       * A missing index is ambiguous: the driver may omit keyPattern even
+       * though the rejected insert lost the urlHash race. Try adoption before
+       * treating it as a code collision.
+       */
+      if (urlHashCollision || collidingIndex === null) {
+        const outcome = await adoptByUrlHash(
+          urlHash,
+          cleanedUrl,
+          timings
         );
 
-        // The winner may have expired in the gap (TTL deletes are
-        // asynchronous). Remove it so the retry gets a fresh salt/code and
-        // old short URLs do not revive.
-        if (winner) {
-          if (new Date(winner.expiresAt).getTime() <= Date.now()) {
-            await measureStage(
-              timings,
-              "insertMs",
-              () =>
-                Link.deleteOne({
-                  _id: (winner as any)._id,
-                  expiresAt: { $lte: new Date() },
-                })
-            );
-            continue;
-          }
+        if (outcome.status === "adopted") {
+          return outcome.result;
+        }
 
-          const adopted = await adoptExistingLink(
-            winner,
-            cleanedUrl,
-            urlHash,
-            timings
-          );
-
-          if (adopted) {
-            return adopted;
-          }
+        if (collidingIndex === null && outcome.status === "missing") {
+          logWarn("SHORT CODE COLLISION", {
+            operation: "createShortUrl",
+            attempt,
+            collidingIndex,
+            resolution: "unknown_index_missing_url_hash",
+            errorCode: "short_code_collision",
+            cleanedUrl: redactUrl(cleanedUrl),
+          });
         }
 
         continue;
@@ -416,6 +458,9 @@ export const createShortUrlFromPrepared = async (
       logWarn("SHORT CODE COLLISION", {
         operation: "createShortUrl",
         attempt,
+        collidingIndex,
+        resolution: "code_hash",
+        errorCode: "short_code_collision",
         cleanedUrl: redactUrl(cleanedUrl),
       });
 
