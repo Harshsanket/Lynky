@@ -3,7 +3,10 @@ import { Link } from "../models/link.models.js";
 import { Stats } from "../models/stats.models.js";
 import { hashCode } from "./code-hash.service.js";
 import { pendingCodeKey, pendingGlobalKey } from "./click-keys.js";
-import { getCacheStore } from "./redis.client.js";
+import {
+  getCacheStore,
+  type CachePipelineCommand,
+} from "./redis.client.js";
 import { invalidateStatsCache } from "./stats.service.js";
 
 interface PendingCounts {
@@ -33,14 +36,33 @@ const bumpPending = async (
   const store = getCacheStore();
   const now = new Date().toISOString();
   const existing = await readPending(key);
+  const commands: CachePipelineCommand[] = [];
 
   if (!existing.startedAt) {
-    await store.hSet(key, "startedAt", now);
+    commands.push({
+      type: "hSet",
+      key,
+      field: "startedAt",
+      value: now,
+    });
   }
 
-  await store.hIncrBy(key, "attempts", 1);
-  await store.hIncrBy(key, success ? "success" : "failed", 1);
-  await store.expire(key, env.CLICK_PENDING_TTL_SECONDS);
+  commands.push(
+    { type: "hIncrBy", key, field: "attempts", delta: 1 },
+    {
+      type: "hIncrBy",
+      key,
+      field: success ? "success" : "failed",
+      delta: 1,
+    },
+    {
+      type: "expire",
+      key,
+      ttlSeconds: env.CLICK_PENDING_TTL_SECONDS,
+    }
+  );
+
+  await store.pipeline(commands);
 
   return {
     attempts: existing.attempts + 1,
@@ -85,21 +107,22 @@ const writeExactClick = async (
       : { totalClicksFailed: 1 }),
   };
 
-  await Stats.findOneAndUpdate(
-    { key: "global" },
-    { $inc: statsUpdate },
-    { upsert: true, setDefaultsOnInsert: true }
-  );
-
-  if (success) {
-    await Link.updateOne(
-      { codeHash: hashCode(code) },
-      {
-        $inc: { visitCount: 1 },
-        $set: { lastVisitedAt: new Date() },
-      }
-    );
-  }
+  await Promise.all([
+    Stats.findOneAndUpdate(
+      { key: "global" },
+      { $inc: statsUpdate },
+      { upsert: true, setDefaultsOnInsert: true }
+    ),
+    success
+      ? Link.updateOne(
+          { codeHash: hashCode(code) },
+          {
+            $inc: { visitCount: 1 },
+            $set: { lastVisitedAt: new Date() },
+          }
+        )
+      : Promise.resolve(),
+  ]);
 
   invalidateStatsCache();
 };
@@ -244,9 +267,8 @@ export const recordClick = async (
 
 /** Flush everything on a request path (used by redirects and tests). */
 export const flushPendingClicks = async (code?: string): Promise<void> => {
-  await flushGlobalClicks();
-
-  if (code) {
-    await flushClickForCode(code);
-  }
+  await Promise.all([
+    flushGlobalClicks(),
+    code ? flushClickForCode(code) : Promise.resolve(),
+  ]);
 };

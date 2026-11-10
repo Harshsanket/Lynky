@@ -5,7 +5,7 @@ import { hashUrl } from "./url-hasher.service.js";
 import { getPublicUrl } from "./url-public-generator.service.js";
 import { cleanUrl } from "./url-cleaner.service.js";
 import { validateUrl } from "./url-validator.service.js";
-import { findExistingUrl, findLinkByUrlHash } from "./url-existance-checker.service.js";
+import { findLinkByUrlHash } from "./url-existance-checker.service.js";
 import { getExpirationDate } from "./url-expiration.service.js";
 import { encryptUrl } from "./encryption.service.js";
 import { assertNotOwnLink } from "./own-link.service.js";
@@ -40,13 +40,12 @@ export class ShortCodeExhaustedError extends Error {
  *  1. Validate the URL is HTTP(S).
  *  2. Reject Lynky's own URLs.
  *  3. Clean tracking parameters via the ClearURLs rules.
- *  4. Look up an existing, un-expired link by hash of the cleaned URL and
- *     extend its expiry if found.
- *  5. Otherwise insert a new record. The `code` and `urlHash` fields are both
- *     unique, so a duplicate-key error (E11000) is disambiguated:
- *       - `code`  collision → generate a new code and retry (bounded).
- *       - `urlHash` collision → another request won the race for this
- *         destination; adopt its row instead of inserting a duplicate.
+ *  4. Attempt the insert directly. The `codeHash` and `urlHash` fields are
+ *     both unique, so a duplicate-key error (E11000) is disambiguated:
+ *       - `codeHash` collision → generate a new salt/code and retry (bounded).
+ *       - `urlHash` collision → the destination already exists; adopt its row
+ *         instead of inserting a duplicate.
+ *     This avoids a separate dedupe read before every create.
  *
  * The original (cleaned) URL is returned for logging/preview purposes; only
  * the encrypted copy is stored.
@@ -332,25 +331,6 @@ export const createShortUrlFromPrepared = async (
   { cleanedUrl, urlHash }: PreparedUrl,
   timings: StageTimings | null = null
 ) => {
-  const existingUrl = await measureStage(
-    timings,
-    "dedupeMs",
-    () => findExistingUrl(urlHash)
-  );
-
-  if (existingUrl) {
-    const adopted = await adoptExistingLink(
-      existingUrl,
-      cleanedUrl,
-      urlHash,
-      timings
-    );
-
-    if (adopted) {
-      return adopted;
-    }
-  }
-
   const expiresAt = getExpirationDate();
 
   for (

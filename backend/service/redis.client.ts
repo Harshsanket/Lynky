@@ -9,6 +9,11 @@ import { logInfo } from "./logger.js";
  * source of truth), so every operation is allowed to fail without breaking a
  * request.
  */
+export type CachePipelineCommand =
+  | { type: "hSet"; key: string; field: string; value: string }
+  | { type: "hIncrBy"; key: string; field: string; delta: number }
+  | { type: "expire"; key: string; ttlSeconds: number };
+
 export interface CacheStore {
   get(key: string): Promise<string | null>;
   set(key: string, value: string, ttlSeconds?: number): Promise<void>;
@@ -22,6 +27,7 @@ export interface CacheStore {
   sAdd(key: string, member: string): Promise<void>;
   sMembers(key: string): Promise<string[]>;
   sRem(key: string, member: string): Promise<void>;
+  pipeline(commands: CachePipelineCommand[]): Promise<void>;
 }
 
 interface MemoryEntry {
@@ -207,6 +213,18 @@ export class MemoryCacheStore implements CacheStore {
       this.entries.delete(prefixed(key));
     }
   }
+
+  async pipeline(commands: CachePipelineCommand[]): Promise<void> {
+    for (const command of commands) {
+      if (command.type === "hSet") {
+        await this.hSet(command.key, command.field, command.value);
+      } else if (command.type === "hIncrBy") {
+        await this.hIncrBy(command.key, command.field, command.delta);
+      } else {
+        await this.expire(command.key, command.ttlSeconds);
+      }
+    }
+  }
 }
 
 /**
@@ -307,6 +325,35 @@ class UpstashCacheStore implements CacheStore {
 
   async sRem(key: string, member: string): Promise<void> {
     await this.client.srem(prefixed(key), member);
+  }
+
+  async pipeline(commands: CachePipelineCommand[]): Promise<void> {
+    if (commands.length === 0) {
+      return;
+    }
+
+    const pipeline = this.client.pipeline();
+
+    for (const command of commands) {
+      if (command.type === "hSet") {
+        pipeline.hset(prefixed(command.key), {
+          [command.field]: command.value,
+        });
+      } else if (command.type === "hIncrBy") {
+        pipeline.hincrby(
+          prefixed(command.key),
+          command.field,
+          command.delta
+        );
+      } else {
+        pipeline.expire(
+          prefixed(command.key),
+          command.ttlSeconds
+        );
+      }
+    }
+
+    await pipeline.exec();
   }
 
   async ping(): Promise<void> {

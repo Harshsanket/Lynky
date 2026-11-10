@@ -103,10 +103,16 @@ export const slideCachedLink = async (
   }
 
   try {
-    const store = getCacheStore();
-    await store.expire(linkKey(code), ttl);
-    await store.expire(hotKey(code), ttl);
-    await store.hSet(hotKey(code), "lastVisitedAt", new Date().toISOString());
+    await getCacheStore().pipeline([
+      { type: "expire", key: linkKey(code), ttlSeconds: ttl },
+      { type: "expire", key: hotKey(code), ttlSeconds: ttl },
+      {
+        type: "hSet",
+        key: hotKey(code),
+        field: "lastVisitedAt",
+        value: new Date().toISOString(),
+      },
+    ]);
   } catch {
     // Ignore cache failures.
   }
@@ -140,12 +146,16 @@ export const recordVisitWindow = async (code: string): Promise<number> => {
     const currentKey = windowKey(code, bucket);
     const previousKey = windowKey(code, bucket - 1);
 
-    const current = await store.incrBy(currentKey, 1);
-    await store.expire(currentKey, env.HOT_WINDOW_SECONDS * 2);
+    const [current, previousRaw] = await Promise.all([
+      store.incrBy(
+        currentKey,
+        1,
+        env.HOT_WINDOW_SECONDS * 2
+      ),
+      store.get(previousKey),
+    ]);
 
-    const previous = Number(
-      (await store.get(previousKey)) ?? 0
-    );
+    const previous = Number(previousRaw ?? 0);
 
     return current + (Number.isFinite(previous) ? previous : 0);
   } catch {
@@ -164,12 +174,23 @@ export const markHotLink = async (
   }
 
   try {
-    const store = getCacheStore();
     const now = new Date().toISOString();
 
-    await store.hSet(hotKey(code), "startedAt", now);
-    await store.hSet(hotKey(code), "lastVisitedAt", now);
-    await store.expire(hotKey(code), ttl);
+    await getCacheStore().pipeline([
+      {
+        type: "hSet",
+        key: hotKey(code),
+        field: "startedAt",
+        value: now,
+      },
+      {
+        type: "hSet",
+        key: hotKey(code),
+        field: "lastVisitedAt",
+        value: now,
+      },
+      { type: "expire", key: hotKey(code), ttlSeconds: ttl },
+    ]);
   } catch {
     // Ignore cache failures.
   }
