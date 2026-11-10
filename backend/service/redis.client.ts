@@ -28,6 +28,10 @@ export interface CacheStore {
   sMembers(key: string): Promise<string[]>;
   sRem(key: string, member: string): Promise<void>;
   pipeline(commands: CachePipelineCommand[]): Promise<void>;
+  redirectPreflight(
+    rateLimitKey: string,
+    linkKey: string
+  ): Promise<{ count: number; cachedRaw: string | null }>;
 }
 
 interface MemoryEntry {
@@ -225,6 +229,16 @@ export class MemoryCacheStore implements CacheStore {
       }
     }
   }
+
+  async redirectPreflight(
+    rateLimitKey: string,
+    linkKey: string
+  ): Promise<{ count: number; cachedRaw: string | null }> {
+    const count = await this.incrBy(rateLimitKey, 1, 3600);
+    const cachedRaw = await this.get(linkKey);
+
+    return { count, cachedRaw };
+  }
 }
 
 /**
@@ -354,6 +368,24 @@ class UpstashCacheStore implements CacheStore {
     }
 
     await pipeline.exec();
+  }
+
+  async redirectPreflight(
+    rateLimitKey: string,
+    linkKey: string
+  ): Promise<{ count: number; cachedRaw: string | null }> {
+    const pipeline = this.client.pipeline();
+
+    pipeline.incrby(prefixed(rateLimitKey), 1);
+    pipeline.expire(prefixed(rateLimitKey), 3600);
+    pipeline.get<string>(prefixed(linkKey));
+
+    const result = await pipeline.exec();
+
+    return {
+      count: Number(result[0] ?? 0),
+      cachedRaw: (result[2] as string | null) ?? null,
+    };
   }
 
   async ping(): Promise<void> {

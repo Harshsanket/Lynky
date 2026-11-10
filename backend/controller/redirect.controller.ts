@@ -9,6 +9,7 @@ import {
   getCachedLink,
   invalidateLinkCache,
   markHotLink,
+  parseCachedLink,
   recordVisitWindow,
   setCachedLink,
   slideCachedLink,
@@ -127,7 +128,21 @@ export const redirectToOriginalUrl = async (
   const { code } = req.params;
 
   try {
-    const cached = await getCachedLink(code);
+    const preflightRaw = res.locals.redirectCacheRaw as
+      | string
+      | null
+      | undefined;
+    let cached: CachedLink | null;
+
+    if (preflightRaw !== undefined) {
+      cached = parseCachedLink(preflightRaw);
+
+      if (preflightRaw && !cached) {
+        await invalidateLinkCache(code);
+      }
+    } else {
+      cached = await getCachedLink(code);
+    }
 
     if (cached) {
       markRequestMetric(res, "cacheHit");

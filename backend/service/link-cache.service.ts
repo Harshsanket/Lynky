@@ -11,6 +11,9 @@ const hotKey = (code: string): string => `hot:${code}`;
 const windowKey = (code: string, bucket: number): string =>
   `win:${code}:${bucket}`;
 
+/** Raw Redis key for a cached link; used by the redirect preflight pipeline. */
+export const cachedLinkKey = (code: string): string => linkKey(code);
+
 const ttlFor = (expiresAt: Date, maxSeconds: number): number => {
   const remainingSeconds = Math.ceil(
     (expiresAt.getTime() - Date.now()) / 1000
@@ -19,49 +22,56 @@ const ttlFor = (expiresAt: Date, maxSeconds: number): number => {
   return Math.max(0, Math.min(maxSeconds, remainingSeconds));
 };
 
+export const parseCachedLink = (
+  raw: string | null
+): CachedLink | null => {
+  if (!raw) {
+    return null;
+  }
+
+  let parsed: {
+    originalUrl?: unknown;
+    expiresAt?: unknown;
+  };
+
+  try {
+    parsed = JSON.parse(raw) as typeof parsed;
+  } catch {
+    return null;
+  }
+
+  if (
+    typeof parsed.originalUrl !== "string" ||
+    typeof parsed.expiresAt !== "string"
+  ) {
+    return null;
+  }
+
+  const expiresAt = new Date(parsed.expiresAt);
+
+  if (!Number.isFinite(expiresAt.getTime())) {
+    return null;
+  }
+
+  if (expiresAt.getTime() <= Date.now()) {
+    return null;
+  }
+
+  return { originalUrl: parsed.originalUrl, expiresAt };
+};
+
 export const getCachedLink = async (
   code: string
 ): Promise<CachedLink | null> => {
   try {
     const raw = await getCacheStore().get(linkKey(code));
+    const parsed = parseCachedLink(raw);
 
-    if (!raw) {
-      return null;
-    }
-
-    let parsed: {
-      originalUrl?: unknown;
-      expiresAt?: unknown;
-    };
-
-    try {
-      parsed = JSON.parse(raw) as typeof parsed;
-    } catch {
+    if (raw && !parsed) {
       await getCacheStore().del(linkKey(code));
-      return null;
     }
 
-    if (
-      typeof parsed.originalUrl !== "string" ||
-      typeof parsed.expiresAt !== "string"
-    ) {
-      await getCacheStore().del(linkKey(code));
-      return null;
-    }
-
-    const expiresAt = new Date(parsed.expiresAt);
-
-    if (!Number.isFinite(expiresAt.getTime())) {
-      await getCacheStore().del(linkKey(code));
-      return null;
-    }
-
-    if (expiresAt.getTime() <= Date.now()) {
-      await getCacheStore().del(linkKey(code));
-      return null;
-    }
-
-    return { originalUrl: parsed.originalUrl, expiresAt };
+    return parsed;
   } catch {
     return null;
   }

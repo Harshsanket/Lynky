@@ -2,7 +2,10 @@ import { rateLimit, ipKeyGenerator } from "express-rate-limit";
 import type { NextFunction, Request, Response } from "express";
 import { env } from "../src/config/env.js";
 import { logWarn } from "../service/logger.js";
-import { consumeGlobalRateLimit } from "../service/rate-limit.service.js";
+import {
+  consumeGlobalRateLimit,
+  consumeRedirectRateLimitAndCache,
+} from "../service/rate-limit.service.js";
 
 /**
  * Rate-limit identity.
@@ -41,6 +44,20 @@ const handler = (
   return res.status(options.statusCode).json(options.message);
 };
 
+const redirectCodeFor = (req: Request): string | null => {
+  if (req.method !== "GET") {
+    return null;
+  }
+
+  if (req.path === "/health" || req.path === "/ready") {
+    return null;
+  }
+
+  const match = req.path.match(/^\/([A-Za-z0-9_-]+)$/);
+
+  return match?.[1] ?? null;
+};
+
 /** Global throttle applied to every request (anti-DoS backstop). */
 export const rateLimitMiddleware = async (
   req: Request,
@@ -48,7 +65,14 @@ export const rateLimitMiddleware = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const result = await consumeGlobalRateLimit();
+    const redirectCode = redirectCodeFor(req);
+    const result = redirectCode
+      ? await consumeRedirectRateLimitAndCache(redirectCode)
+      : await consumeGlobalRateLimit();
+
+    if ("cachedRaw" in result) {
+      res.locals.redirectCacheRaw = result.cachedRaw;
+    }
 
     res.setHeader("X-RateLimit-Limit", String(result.limit));
     res.setHeader(
