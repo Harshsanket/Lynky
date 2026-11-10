@@ -269,10 +269,38 @@ export const deleteAdminSession = async (
   await AdminSession.deleteOne({ _id: hashSessionId(sessionId) });
 };
 
+type DeploymentEnv = Pick<
+  typeof env,
+  "isProduction" | "PUBLIC_URL" | "FRONTEND_URL"
+>;
+
+/**
+ * Cross-site sysadmin usage (split deployments) needs SameSite=None; same-site
+ * deployments keep Strict, which is safer against CSRF.
+ */
+export const sameSiteForDeployment = (
+  config: DeploymentEnv = env
+): "strict" | "none" => {
+  if (!config.isProduction) {
+    return "strict";
+  }
+
+  try {
+    const backendOrigin = new URL(config.PUBLIC_URL).origin;
+    const frontendOrigin = config.FRONTEND_URL
+      ? new URL(config.FRONTEND_URL).origin
+      : backendOrigin;
+
+    return backendOrigin === frontendOrigin ? "strict" : "none";
+  } catch {
+    return "none";
+  }
+};
+
 export const sessionCookieOptions = () => ({
   httpOnly: true,
   secure: env.isProduction,
-  sameSite: "strict" as const,
+  sameSite: sameSiteForDeployment(),
   path: "/",
   maxAge: ADMIN_SESSION_ABSOLUTE_MS,
 });
@@ -280,6 +308,6 @@ export const sessionCookieOptions = () => ({
 export const clearSessionCookieOptions = () => ({
   httpOnly: true,
   secure: env.isProduction,
-  sameSite: "strict" as const,
+  sameSite: sameSiteForDeployment(),
   path: "/",
 });
