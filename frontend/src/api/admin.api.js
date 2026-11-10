@@ -7,10 +7,6 @@ const API_URL = import.meta.env.VITE_API_URL || "";
 const API_ROOT = API_URL.replace(/\/api\/v1\/?$/, "");
 
 const request = async (path, options = {}) => {
-  if (!API_ROOT) {
-    throw new Error("VITE_API_URL is not configured.");
-  }
-
   const headers = new Headers(options.headers);
 
   if (options.body !== undefined) {
