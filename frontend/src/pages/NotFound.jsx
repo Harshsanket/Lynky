@@ -1,23 +1,9 @@
-import { useEffect } from "react";
-import { Link, useLocation } from "react-router";
+import { Link } from "react-router";
 
 /** 404 page — shown for any unmatched route. */
 export default function NotFound() {
-  const location = useLocation();
   const host =
     typeof window !== "undefined" ? window.location.host : "lynky";
-
-  useEffect(() => {
-    const code = new URLSearchParams(location.search).get("code");
-
-    if (code) {
-      try {
-        window.sessionStorage.setItem("lynky:invalid-code", code);
-      } catch {
-        // Session storage can be unavailable; this marker is optional UX only.
-      }
-    }
-  }, [location.search]);
 
   return (
     <div className="flex  flex-col bg-bg font-body text-ink">

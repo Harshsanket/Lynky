@@ -11,6 +11,12 @@ export default defineConfig(({ mode }) => {
     )
   }
 
+  if (!env.VITE_SHORT_URL) {
+    throw new Error(
+      'VITE_SHORT_URL is required. Set it in .env.local or the build environment.',
+    )
+  }
+
   const siteUrl = (
     env.VITE_SITE_URL || 'http://localhost:5173'
   ).replace(/\/$/, '')

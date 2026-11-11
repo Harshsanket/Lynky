@@ -18,5 +18,5 @@ export const SITE_URL = stripTrailingSlash(
 );
 
 export const SHORT_URL = stripTrailingSlash(
-  env.VITE_SHORT_URL || 'http://localhost:5001',
+  env.VITE_SHORT_URL || SITE_URL,
 );

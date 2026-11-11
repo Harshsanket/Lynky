@@ -39,6 +39,7 @@ function UrlCleaner() {
   const cooldownTimer = useRef(null);
   const copyTimer = useRef(null);
   const pasteTimer = useRef(null);
+  const inFlightRef = useRef(false);
 
   useEffect(
     () => () => {
@@ -62,7 +63,7 @@ function UrlCleaner() {
   async function runShortener(value) {
     const url = value.trim();
 
-    if (!url || loading || cooldown || result) return;
+    if (!url || inFlightRef.current || cooldown || result) return;
 
     const check = validateUrlInput(url);
 
@@ -72,6 +73,7 @@ function UrlCleaner() {
       return;
     }
 
+    inFlightRef.current = true;
     setLoading(true);
     setError(false);
     setErrorMessage('');
@@ -92,6 +94,7 @@ function UrlCleaner() {
         error?.data?.message || error?.message || 'Unable to shorten this URL.',
       );
     } finally {
+      inFlightRef.current = false;
       setLoading(false);
       triggerCooldown();
     }
@@ -151,6 +154,8 @@ function UrlCleaner() {
       await navigator.clipboard.writeText(result);
 
       setCopied(true);
+      setError(false);
+      setErrorMessage('');
 
       clearTimeout(copyTimer.current);
       copyTimer.current = setTimeout(() => {
@@ -158,6 +163,8 @@ function UrlCleaner() {
       }, 1500);
     } catch {
       setCopied(false);
+      setError(true);
+      setErrorMessage('Unable to copy the link. Select and copy it manually.');
     }
   }
 

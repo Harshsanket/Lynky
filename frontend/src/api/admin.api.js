@@ -3,41 +3,13 @@
  * not under the public `/api/v1` prefix, and use a Mongo session cookie.
  */
 
+import { apiAt } from "./client.api";
+
 const API_URL = import.meta.env.VITE_API_URL || "";
 const API_ROOT = API_URL.replace(/\/api\/v1\/?$/, "");
-
-const request = async (path, options = {}) => {
-  const headers = new Headers(options.headers);
-
-  if (options.body !== undefined) {
-    headers.set("Content-Type", "application/json");
-  }
-
-  const response = await fetch(`${API_ROOT}/sysadmin/api${path}`, {
-    ...options,
-    headers,
-    credentials: "include",
-  });
-
-  let data;
-
-  try {
-    data = await response.json();
-  } catch {
-    // Empty error body.
-  }
-
-  if (!response.ok) {
-    const error = new Error(
-      data?.message || `Admin request failed (${response.status})`
-    );
-
-    error.status = response.status;
-    throw error;
-  }
-
-  return data;
-};
+const adminRequest = apiAt(`${API_ROOT}/sysadmin/api`);
+const request = (path, options = {}) =>
+  adminRequest(path, { credentials: "include", ...options });
 
 export const getAdminSession = () => request("/session");
 

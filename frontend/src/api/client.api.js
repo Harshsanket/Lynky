@@ -24,13 +24,7 @@ export class ApiError extends Error {
  * no body should stay simple requests), applies a timeout, and resolves with
  * the parsed JSON body. Throws an `ApiError` when the response is not OK.
  */
-export const api = async (endpoint, options = {}) => {
-  if (!API_URL) {
-    throw new Error(
-      "VITE_API_URL is not configured. Set it to the backend API base URL.",
-    );
-  }
-
+const request = async (baseUrl, endpoint, options = {}) => {
   const controller = new AbortController();
   let timedOut = false;
 
@@ -59,7 +53,7 @@ export const api = async (endpoint, options = {}) => {
   }
 
   try {
-    const response = await fetch(`${API_URL}${endpoint}`, {
+    const response = await fetch(`${baseUrl}${endpoint}`, {
       ...options,
       headers,
       signal: controller.signal,
@@ -105,3 +99,23 @@ export const api = async (endpoint, options = {}) => {
     options.signal?.removeEventListener("abort", abortFromCaller);
   }
 };
+
+/**
+ * Public API client rooted at `VITE_API_URL`.
+ */
+export const api = (endpoint, options = {}) => {
+  if (!API_URL) {
+    throw new Error(
+      "VITE_API_URL is not configured. Set it to the backend API base URL.",
+    );
+  }
+
+  return request(API_URL, endpoint, options);
+};
+
+/**
+ * Build a client for another same-origin or absolute root (for example the
+ * sysadmin API). An empty base URL deliberately means same-origin.
+ */
+export const apiAt = (baseUrl) => (endpoint, options = {}) =>
+  request(baseUrl, endpoint, options);

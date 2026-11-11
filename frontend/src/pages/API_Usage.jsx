@@ -51,8 +51,16 @@ const API_Usage = () => {
 
       try {
         const data = await getApiKeyUsage(secretKey);
+        const nextUsage = data?.data;
 
-        if (!cancelled) setUsage(data?.data);
+        if (!cancelled) {
+          if (nextUsage) {
+            setUsage(nextUsage);
+            setUsageError('');
+          } else {
+            setUsageError('Unable to load usage stats.');
+          }
+        }
       } catch (error) {
         // Keep the last known numbers on transient failures, but drop the
         // session when the key is no longer accepted.
@@ -94,8 +102,15 @@ const API_Usage = () => {
 
     try {
       const data = await getApiKeyUsage(key);
+      const nextUsage = data?.data;
 
-      setUsage(data?.data);
+      if (!nextUsage) {
+        setUsageError('Unable to load usage stats.');
+        return;
+      }
+
+      setUsage(nextUsage);
+      setUsageError('');
     } catch (error) {
       setUsageError(
         error?.data?.message || 'Unable to load usage stats.',
