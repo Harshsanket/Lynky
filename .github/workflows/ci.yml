@@ -45,6 +45,7 @@ jobs:
 
     env:
       VITE_API_URL: /api/v1
+      VITE_SHORT_URL: https://short-lynky-hs.vercel.app
 
     defaults:
       run:
