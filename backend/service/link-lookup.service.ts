@@ -8,58 +8,21 @@ export type RedirectLink = Pick<
 > & { _id: unknown; codeHash: string };
 
 /**
- * Resolve a redirect by hashing the path code. Before the migration has run,
- * legacy rows still have a plaintext `code`; reading one backfills `codeHash`
- * and removes the legacy field so the next request uses the hash path only.
+ * Resolve a redirect by hashing the path code.
+ *
+ * The legacy plaintext-code fallback was removed after production reached
+ * zero rows without `codeHash`; keeping it would require a `code_1` index on
+ * every insert and a collection scan for every cache-miss 404.
  */
 export const findLinkForRedirect = async (
   code: string
 ): Promise<RedirectLink | null> => {
   await connectDatabase();
 
-  const codeHash = hashCode(code);
-  const now = new Date();
-
   const current = await Link.findOne({
-    codeHash,
-    expiresAt: { $gt: now },
+    codeHash: hashCode(code),
+    expiresAt: { $gt: new Date() },
   }).lean();
 
-  if (current) {
-    return current as unknown as RedirectLink;
-  }
-
-  const legacy = await Link.collection.findOne({
-    code,
-    expiresAt: { $gt: now },
-  });
-
-  if (!legacy) {
-    return null;
-  }
-
-  const legacyCode = String((legacy as { code?: unknown }).code ?? "");
-
-  if (!legacyCode) {
-    return null;
-  }
-
-  const legacyHash = hashCode(legacyCode);
-
-  await Link.collection.updateOne(
-    { _id: legacy._id },
-    {
-      $set: { codeHash: legacyHash },
-      $unset: { code: "" },
-    }
-  );
-
-  return {
-    _id: legacy._id,
-    codeHash: legacyHash,
-    originalUrl: String(legacy.originalUrl ?? ""),
-    expiresAt: new Date(legacy.expiresAt as Date),
-    visitCount: Number(legacy.visitCount ?? 0),
-    lastVisitedAt: (legacy.lastVisitedAt as Date | null) ?? null,
-  };
+  return (current as unknown as RedirectLink | null) ?? null;
 };

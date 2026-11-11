@@ -20,51 +20,34 @@ const codeHashIsPartialUnique = (index: {
 /**
  * Ensure the links collection has the indexes the runtime expects.
  *
- * Production can carry indexes from older schemas: a non-sparse plaintext
- * `code` index, a non-unique `urlHash_1`, or a non-partial `codeHash_1`.
- * Repair them by key before Mongoose's `Link.init()` attempts to create its
- * own definitions and fails with an index conflict.
+ * Production can carry indexes from older schemas: a plaintext `code` index,
+ * a non-unique `urlHash_1`, or a non-partial `codeHash_1`. Drop the unused
+ * `code` index and repair the others by key before Mongoose's `Link.init()`
+ * attempts to create its own definitions and fails with an index conflict.
  */
 export const assertLinkIndexesReady = async (): Promise<void> => {
   const indexes = await Link.collection.indexes();
   const dropped: string[] = [];
 
-  /* Legacy plaintext code index: must be sparse so codeHash-only rows are
-     not treated as duplicate nulls. */
+  /* Legacy plaintext code index: no runtime query filters on plaintext
+     `code` any more, so drop every variant instead of repairing it. */
   const codeIndexes = indexes.filter(
     (index) =>
       index.key &&
       (index.key as Record<string, unknown>).code === 1
   );
-  const canonicalCode = codeIndexes.find(
-    (index) => index.name === "code_1"
-  );
-  const codeNeedsRepair =
-    codeIndexes.length > 0 &&
-    (codeIndexes.length !== 1 ||
-      canonicalCode === undefined ||
-      canonicalCode.sparse !== true);
 
-  if (codeNeedsRepair) {
-    for (const index of codeIndexes) {
-      if (!index.name) continue;
+  for (const index of codeIndexes) {
+    if (!index.name) continue;
 
-      try {
-        await Link.collection.dropIndex(index.name);
-        dropped.push(index.name);
-      } catch (error) {
-        if ((error as { codeName?: string }).codeName !== "IndexNotFound") {
-          throw error;
-        }
+    try {
+      await Link.collection.dropIndex(index.name);
+      dropped.push(index.name);
+    } catch (error) {
+      if ((error as { codeName?: string }).codeName !== "IndexNotFound") {
+        throw error;
       }
     }
-  }
-
-  if (codeIndexes.length === 0 || codeNeedsRepair) {
-    await Link.collection.createIndex(
-      { code: 1 },
-      { name: "code_1", sparse: true }
-    );
   }
 
   /* Legacy urlHash index: must be unique. */

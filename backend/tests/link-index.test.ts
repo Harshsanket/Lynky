@@ -38,7 +38,7 @@ after(async () => {
   await mongoose.disconnect();
 });
 
-run("repairs legacy indexes before create traffic starts", async () => {
+run("drops the legacy code index and repairs unique indexes", async () => {
   const expiresAt = new Date(Date.now() + 60_000);
   const base = {
     originalUrl: "ciphertext",
@@ -69,8 +69,7 @@ run("repairs legacy indexes before create traffic starts", async () => {
     (index) => index.name === "codeHash_1"
   );
 
-  assert.equal(codeIndex?.name, "code_1");
-  assert.equal(codeIndex?.sparse, true);
+  assert.equal(codeIndex, undefined);
   assert.equal(codeHashIndex?.unique, true);
   assert.deepEqual(codeHashIndex?.partialFilterExpression, {
     codeHash: { $type: "string" },

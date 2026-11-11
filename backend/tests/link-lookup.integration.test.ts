@@ -16,7 +16,6 @@ const { connectDatabase } = await import(
   "../database/index.database.js"
 );
 const { Link } = await import("../models/link.models.js");
-const { hashCode } = await import("../service/code-hash.service.js");
 const { encryptUrl } = await import("../service/encryption.service.js");
 const { findLinkForRedirect } = await import(
   "../service/link-lookup.service.js"
@@ -38,7 +37,7 @@ after(async () => {
   await mongoose.disconnect();
 });
 
-run("reads a legacy plaintext code, backfills codeHash, and removes code", async () => {
+run("ignores a legacy plaintext-only row", async () => {
   const code = crypto.randomBytes(4).toString("hex").slice(0, 6);
   const urlHash = `${crypto.randomBytes(32).toString("hex")}`;
 
@@ -52,15 +51,7 @@ run("reads a legacy plaintext code, backfills codeHash, and removes code", async
     createdAt: new Date(),
   });
 
-  const link = await findLinkForRedirect(code);
-
-  assert.equal(link?.codeHash, hashCode(code));
-  assert.equal(link?.originalUrl !== "", true);
-
-  const raw = await Link.collection.findOne({ urlHash });
-
-  assert.equal((raw as any)?.code, undefined);
-  assert.equal((raw as any)?.codeHash, hashCode(code));
+  assert.equal(await findLinkForRedirect(code), null);
 });
 
 run("returns null for a missing code", async () => {

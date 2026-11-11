@@ -18,9 +18,8 @@ import mongoose, { Document, Schema } from "mongoose";
 export interface ILink extends Document {
   codeHash: string;
   /**
-   * Legacy plaintext short code. Only pre-`codeHash` rows have this field;
-   * the sparse index keeps the fallback lookup cheap without indexing new
-   * rows.
+   * Legacy plaintext short code. Historical rows may retain this field, but
+   * runtime lookups use `codeHash` only.
    */
   code?: string | null;
   /**
