@@ -26,6 +26,10 @@ export interface IMetricRollup extends Document {
   errorCount: number;
   botBlocks: number;
   authFailures: number;
+  /**
+   * Sparse by design: written only when short-code generation exhausts its
+   * attempts, and read by the sysadmin dashboard aggregate.
+   */
   shortCodeExhausted: number;
   eventLoopLagP99Ms?: number;
   eventLoopLagMaxMs?: number;
