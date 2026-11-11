@@ -44,6 +44,30 @@ export class AdminAuthError extends Error {
 const sha256 = (value: string): string =>
   crypto.createHash("sha256").update(value).digest("hex");
 
+/**
+ * Constant-time CSRF comparison. Both inputs are hashed first so the buffers
+ * always have the same length, regardless of attacker-supplied token length.
+ */
+export const csrfTokenMatches = (
+  provided: string | undefined,
+  expected: string | undefined
+): boolean => {
+  if (!provided || !expected) {
+    return false;
+  }
+
+  const providedDigest = crypto
+    .createHash("sha256")
+    .update(provided)
+    .digest();
+  const expectedDigest = crypto
+    .createHash("sha256")
+    .update(expected)
+    .digest();
+
+  return crypto.timingSafeEqual(providedDigest, expectedDigest);
+};
+
 const hashSessionId = (sessionId: string): string => sha256(sessionId);
 
 export const validateAdminUsername = (username: unknown): boolean =>

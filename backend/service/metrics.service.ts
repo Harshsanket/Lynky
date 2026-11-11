@@ -244,7 +244,21 @@ export const flushOldMetrics = async (
         continue;
       }
 
-      await flushOneMinute(epoch);
+      // Cross-instance lock: only one process may read/delete this minute's
+      // buckets. The hash deletion still happens after the Mongo writes, so a
+      // failed write leaves the data available for the next attempt.
+      const lockKey = `metrics:flush:${epoch}`;
+      const locked = await store.setNx(lockKey, "1", 60);
+
+      if (!locked) {
+        continue;
+      }
+
+      try {
+        await flushOneMinute(epoch);
+      } finally {
+        await store.del(lockKey);
+      }
     }
   } catch (error) {
     logWarn("metrics_flush_failed", {

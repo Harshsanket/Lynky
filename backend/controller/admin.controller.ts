@@ -4,6 +4,7 @@ import {
   ADMIN_SESSION_COOKIE,
   AdminAuthError,
   clearSessionCookieOptions,
+  csrfTokenMatches,
   deleteAdminSession,
   ensureAdminConfigured,
   getAdminSessionFromRequest,
@@ -48,6 +49,21 @@ const requireSession = async (req: Request): Promise<IAdminSession> => {
   }
 
   return session;
+};
+
+/** Apply to every non-GET admin handler that carries a session cookie. */
+const requireCsrf = (
+  session: IAdminSession,
+  req: Request
+): void => {
+  if (
+    !csrfTokenMatches(
+      req.header("x-csrf-token"),
+      session.csrfToken
+    )
+  ) {
+    throw new AdminAuthError("Invalid request.", 403, "csrf_failed");
+  }
 };
 
 export const adminLoginController = async (
@@ -104,11 +120,8 @@ export const adminLogoutController = async (
 
   try {
     const session = await requireSession(req);
-    const csrf = req.header("x-csrf-token");
 
-    if (!csrf || csrf !== session.csrfToken) {
-      throw new AdminAuthError("Invalid request.", 403, "csrf_failed");
-    }
+    requireCsrf(session, req);
 
     const sessionId = readAdminSessionCookie(req);
 

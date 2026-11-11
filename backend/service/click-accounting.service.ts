@@ -16,18 +16,17 @@ interface PendingCounts {
   startedAt: string | null;
 }
 
-const FIELDS = ["attempts", "success", "failed", "startedAt"] as const;
+const parsePending = (
+  values: Record<string, string>
+): PendingCounts => ({
+  attempts: Number(values.attempts ?? 0) || 0,
+  success: Number(values.success ?? 0) || 0,
+  failed: Number(values.failed ?? 0) || 0,
+  startedAt: values.startedAt ?? null,
+});
 
-const readPending = async (key: string): Promise<PendingCounts> => {
-  const values = await getCacheStore().hGetAll(key);
-
-  return {
-    attempts: Number(values.attempts ?? 0) || 0,
-    success: Number(values.success ?? 0) || 0,
-    failed: Number(values.failed ?? 0) || 0,
-    startedAt: values.startedAt ?? null,
-  };
-};
+const readPending = async (key: string): Promise<PendingCounts> =>
+  parsePending(await getCacheStore().hGetAll(key));
 
 const bumpPending = async (
   key: string,
@@ -133,13 +132,13 @@ const writeExactClick = async (
  */
 export const flushClickForCode = async (code: string): Promise<void> => {
   const key = pendingCodeKey(code);
-  const pending = await readPending(key);
+  const pending = parsePending(
+    await getCacheStore().getHashAndDelete(key)
+  );
 
   if (pending.attempts <= 0) {
     return;
   }
-
-  await getCacheStore().hDel(key, ...FIELDS);
 
   if (pending.success > 0) {
     await Link.updateOne(
@@ -158,13 +157,13 @@ export const flushClickForCode = async (code: string): Promise<void> => {
  */
 export const flushGlobalClicks = async (): Promise<void> => {
   const key = pendingGlobalKey;
-  const pending = await readPending(key);
+  const pending = parsePending(
+    await getCacheStore().getHashAndDelete(key)
+  );
 
   if (pending.attempts <= 0) {
     return;
   }
-
-  await getCacheStore().hDel(key, ...FIELDS);
 
   await Stats.findOneAndUpdate(
     { key: "global" },

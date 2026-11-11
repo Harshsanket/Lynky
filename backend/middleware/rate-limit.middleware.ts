@@ -6,6 +6,7 @@ import {
   consumeGlobalRateLimit,
   consumeRedirectRateLimitAndCache,
 } from "../service/rate-limit.service.js";
+import { CacheRateLimitStore } from "../service/rate-limit-store.service.js";
 
 /**
  * Rate-limit identity.
@@ -79,7 +80,12 @@ export const rateLimitMiddleware = async (
       "X-RateLimit-Remaining",
       String(Math.max(0, result.limit - result.count))
     );
-    res.setHeader("X-RateLimit-Reset", String(result.retryAfterSeconds));
+    res.setHeader(
+      "X-RateLimit-Reset",
+      String(
+        Math.floor(Date.now() / 1000) + result.retryAfterSeconds
+      )
+    );
 
     if (!result.allowed) {
       res.setHeader("Retry-After", String(result.retryAfterSeconds));
@@ -113,13 +119,18 @@ export const rateLimitMiddleware = async (
   }
 };
 
+const USAGE_WINDOW_MS = 15 * 60 * 1000;
+const LINK_WINDOW_MS = 15 * 60 * 1000;
+const ADMIN_LOGIN_WINDOW_MS = 15 * 60 * 1000;
+
 /** Small throttle for API-key usage reads / probing attempts. */
 export const usageRateLimitMiddleware = rateLimit({
-  windowMs: 15 * 60 * 1000,
+  windowMs: USAGE_WINDOW_MS,
   limit: 60,
 
   keyGenerator,
   handler,
+  store: new CacheRateLimitStore("rl:usage", USAGE_WINDOW_MS),
 
   standardHeaders: "draft-8",
   legacyHeaders: false,
@@ -134,11 +145,35 @@ export const usageRateLimitMiddleware = rateLimit({
 
 /** Stricter throttle for URL-creation endpoints (frontend + API). */
 export const linkRateLimitMiddleware = rateLimit({
-  windowMs: 15 * 60 * 1000,
+  windowMs: LINK_WINDOW_MS,
   limit: env.LINK_RATE_LIMIT_PER_15_MIN,
 
   keyGenerator,
   handler,
+  store: new CacheRateLimitStore("rl:link", LINK_WINDOW_MS),
+
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+
+  message: {
+    success: false,
+    message: "Too many requests. Please try again later.",
+  },
+
+  statusCode: 429,
+});
+
+/** Per-IP throttle in front of the sysadmin login route. */
+export const adminLoginRateLimitMiddleware = rateLimit({
+  windowMs: ADMIN_LOGIN_WINDOW_MS,
+  limit: 20,
+
+  keyGenerator,
+  handler,
+  store: new CacheRateLimitStore(
+    "rl:admin-login",
+    ADMIN_LOGIN_WINDOW_MS
+  ),
 
   standardHeaders: "draft-8",
   legacyHeaders: false,

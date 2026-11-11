@@ -22,7 +22,9 @@ export interface CacheStore {
   incrBy(key: string, delta: number, ttlSeconds?: number): Promise<number>;
   expire(key: string, ttlSeconds: number): Promise<void>;
   hGetAll(key: string): Promise<Record<string, string>>;
+  getHashAndDelete(key: string): Promise<Record<string, string>>;
   hIncrBy(key: string, field: string, delta: number): Promise<number>;
+  setNx(key: string, value: string, ttlSeconds: number): Promise<boolean>;
   hSet(key: string, field: string, value: string): Promise<void>;
   hDel(key: string, ...fields: string[]): Promise<void>;
   sAdd(key: string, member: string): Promise<void>;
@@ -44,6 +46,37 @@ const KEY_PREFIX =
   env.NODE_ENV === "test" ? "lynky:test:" : "lynky:";
 
 const prefixed = (key: string): string => `${KEY_PREFIX}${key}`;
+
+/**
+ * HGETALL may arrive as a flat [field, value, ...] array (automatic
+ * deserialization is disabled) or as a plain object from newer client paths.
+ */
+const normalizeHash = (raw: unknown): Record<string, string> => {
+  if (Array.isArray(raw)) {
+    const result: Record<string, string> = {};
+
+    for (let index = 0; index < raw.length; index += 2) {
+      const field = raw[index];
+      const value = raw[index + 1];
+
+      if (typeof field === "string" && typeof value === "string") {
+        result[field] = value;
+      }
+    }
+
+    return result;
+  }
+
+  if (raw && typeof raw === "object") {
+    return Object.fromEntries(
+      Object.entries(raw as Record<string, unknown>).map(
+        ([field, value]) => [field, String(value)]
+      )
+    );
+  }
+
+  return {};
+};
 
 /**
  * Process-local store used for development and tests. A restart loses all
@@ -130,6 +163,36 @@ export class MemoryCacheStore implements CacheStore {
     }
 
     return Object.fromEntries(entry.value);
+  }
+
+  async getHashAndDelete(
+    key: string
+  ): Promise<Record<string, string>> {
+    const entry = this.getEntry(key);
+
+    if (!(entry?.value instanceof Map)) {
+      return {};
+    }
+
+    const result = Object.fromEntries(entry.value);
+
+    this.entries.delete(prefixed(key));
+
+    return result;
+  }
+
+  async setNx(
+    key: string,
+    value: string,
+    ttlSeconds: number
+  ): Promise<boolean> {
+    if (this.getEntry(key)) {
+      return false;
+    }
+
+    this.setEntry(key, value, ttlSeconds);
+
+    return true;
   }
 
   async hIncrBy(
@@ -274,13 +337,19 @@ class UpstashCacheStore implements CacheStore {
     delta: number,
     ttlSeconds?: number
   ): Promise<number> {
-    const value = await this.client.incrby(prefixed(key), delta);
-
-    if (value === delta && ttlSeconds !== undefined) {
-      await this.client.expire(prefixed(key), ttlSeconds);
+    if (ttlSeconds === undefined) {
+      return this.client.incrby(prefixed(key), delta);
     }
 
-    return value;
+    const value = await this.client.eval(
+      "local v = redis.call('INCRBY', KEYS[1], ARGV[1]); " +
+        "if redis.call('TTL', KEYS[1]) < 0 then " +
+        "redis.call('EXPIRE', KEYS[1], ARGV[2]) end; return v",
+      [prefixed(key)],
+      [String(delta), String(ttlSeconds)]
+    );
+
+    return Number(value);
   }
 
   async expire(key: string, ttlSeconds: number): Promise<void> {
@@ -288,32 +357,36 @@ class UpstashCacheStore implements CacheStore {
   }
 
   async hGetAll(key: string): Promise<Record<string, string>> {
-    const raw = (await this.client.hgetall(prefixed(key))) as unknown;
+    return normalizeHash(
+      (await this.client.hgetall(prefixed(key))) as unknown
+    );
+  }
 
-    if (Array.isArray(raw)) {
-      const result: Record<string, string> = {};
+  async getHashAndDelete(
+    key: string
+  ): Promise<Record<string, string>> {
+    const raw = await this.client.eval(
+      "local v = redis.call('HGETALL', KEYS[1]); " +
+        "if #v > 0 then redis.call('DEL', KEYS[1]) end; return v",
+      [prefixed(key)],
+      []
+    );
 
-      for (let index = 0; index < raw.length; index += 2) {
-        const field = raw[index];
-        const value = raw[index + 1];
+    return normalizeHash(raw);
+  }
 
-        if (typeof field === "string" && typeof value === "string") {
-          result[field] = value;
-        }
-      }
+  async setNx(
+    key: string,
+    value: string,
+    ttlSeconds: number
+  ): Promise<boolean> {
+    const result = await this.client.set(
+      prefixed(key),
+      value,
+      { nx: true, ex: ttlSeconds }
+    );
 
-      return result;
-    }
-
-    if (raw && typeof raw === "object") {
-      return Object.fromEntries(
-        Object.entries(raw as Record<string, unknown>).map(
-          ([field, value]) => [field, String(value)]
-        )
-      );
-    }
-
-    return {};
+    return result === "OK";
   }
 
   async hIncrBy(

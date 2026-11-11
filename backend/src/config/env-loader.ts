@@ -246,9 +246,12 @@ export const loadEnv = (
 
   if (
     !Number.isInteger(MAX_URL_LENGTH) ||
-    MAX_URL_LENGTH <= 0
+    MAX_URL_LENGTH <= 0 ||
+    MAX_URL_LENGTH > 4096
   ) {
-    throw new Error("MAX_URL_LENGTH is not configured correctly");
+    throw new Error(
+      "MAX_URL_LENGTH must be an integer between 1 and 4096"
+    );
   }
 
   /*
@@ -353,6 +356,10 @@ export const loadEnv = (
 
       if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
         throw new Error("not an http(s) URL");
+      }
+
+      if (isProduction && parsed.protocol !== "https:") {
+        throw new Error("production requires https");
       }
 
       if (

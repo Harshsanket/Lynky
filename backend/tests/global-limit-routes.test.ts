@@ -43,6 +43,10 @@ test("the global limit is shared by health, readiness, and API routes", async ()
     assert.equal(fourth.status, 429);
     assert.ok(Number(fourth.headers.get("retry-after")) > 0);
     assert.equal(fourth.headers.get("x-ratelimit-limit"), "3");
+
+    const reset = Number(fourth.headers.get("x-ratelimit-reset"));
+
+    assert.ok(reset >= Math.floor(Date.now() / 1000));
   } finally {
     await new Promise<void>((resolve, reject) => {
       server.close((error) => {

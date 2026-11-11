@@ -8,6 +8,7 @@ process.env.PUBLIC_URL = "https://lynky.test";
 process.env.EXPIRATION_DAYS = "30";
 
 const {
+  csrfTokenMatches,
   sameSiteForDeployment,
   sessionCookieOptions,
   clearSessionCookieOptions,
@@ -59,6 +60,15 @@ test("invalid production origins fail closed to SameSite=None", () => {
     sameSiteForDeployment(config(true, "not a url", "also not a url")),
     "none"
   );
+});
+
+test("CSRF tokens compare only on an exact, non-empty match", () => {
+  const token = "a".repeat(43);
+
+  assert.equal(csrfTokenMatches(token, token), true);
+  assert.equal(csrfTokenMatches(`${token}b`, token), false);
+  assert.equal(csrfTokenMatches(undefined, token), false);
+  assert.equal(csrfTokenMatches(token, undefined), false);
 });
 
 test("development cookie builders keep Strict and non-secure", () => {

@@ -7,10 +7,15 @@ import {
   adminMetricsController,
   adminSessionController,
 } from "../controller/admin.controller.js";
+import { adminLoginRateLimitMiddleware } from "../middleware/rate-limit.middleware.js";
 
 const router = Router();
 
-router.post("/login", adminLoginController);
+router.post(
+  "/login",
+  adminLoginRateLimitMiddleware,
+  adminLoginController
+);
 router.post("/logout", adminLogoutController);
 router.get("/session", adminSessionController);
 router.get("/metrics", adminMetricsController);

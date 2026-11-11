@@ -85,7 +85,7 @@ const scheduleHotSuccess = (
 const scheduleColdSuccess = (
   code: string,
   expiresAt: Date,
-  originalUrl: string
+  encryptedOriginalUrl: string
 ): void => {
   runInBackground(
     async () => {
@@ -98,8 +98,10 @@ const scheduleColdSuccess = (
 
       if (visits >= env.HOT_VISIT_THRESHOLD) {
         await markHotLink(code, expiresAt);
+        // The hot tier must hold exactly what Mongo holds: ciphertext. The
+        // decrypted destination is only for the already-sent 302.
         await setCachedLink(code, {
-          originalUrl,
+          originalUrl: encryptedOriginalUrl,
           expiresAt,
         });
       }
@@ -253,7 +255,7 @@ export const redirectToOriginalUrl = async (
     }
 
     sendSuccessfulRedirect(res, originalUrl);
-    scheduleColdSuccess(code, link.expiresAt, originalUrl);
+    scheduleColdSuccess(code, link.expiresAt, link.originalUrl);
   } catch (error) {
     logError("request_error", error, {
       errorCode: "request_error",

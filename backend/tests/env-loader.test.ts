@@ -195,6 +195,27 @@ test("development CORS includes a configured FRONTEND_URL", () => {
   ]);
 });
 
+test("rejects a cleartext Upstash URL in production", () => {
+  assert.throws(
+    () =>
+      loadEnv({
+        ...baseEnv,
+        NODE_ENV: "production",
+        FRONTEND_URL: "https://lynky.example",
+        UPSTASH_REDIS_REST_URL: "http://upstash.example",
+        UPSTASH_REDIS_REST_TOKEN: "test-token",
+      }),
+    /UPSTASH_REDIS_REST_URL/
+  );
+});
+
+test("caps MAX_URL_LENGTH at 4096", () => {
+  assert.throws(
+    () => loadEnv({ ...baseEnv, MAX_URL_LENGTH: "4097" }),
+    /MAX_URL_LENGTH must be an integer between 1 and 4096/
+  );
+});
+
 test("rejects a code length beyond the generator's entropy", () => {
   assert.throws(
     () => loadEnv({ ...baseEnv, MAX_CODE_LENGTH: "9" }),
