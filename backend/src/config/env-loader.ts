@@ -33,6 +33,7 @@ export interface AppEnv {
   ALLOW_PRIVATE_SUFFIXES: boolean;
   BLOCKLIST_FAILURE_MODE: "open" | "closed";
   CONFIG_FULL_RUNTIME_VALIDATION: boolean;
+  REDIS_URL: string | undefined;
   UPSTASH_REDIS_REST_URL: string | undefined;
   UPSTASH_REDIS_REST_TOKEN: string | undefined;
   GLOBAL_RATE_LIMIT_PER_HOUR: number;
@@ -324,8 +325,24 @@ export const loadEnv = (
   );
 
   /* ------------------------------------------------------------------------ */
-  /*  Upstash Redis / click accounting / global limit                         */
+  /*  Redis cache / click accounting / global limit                           */
   /* ------------------------------------------------------------------------ */
+
+  let REDIS_URL: string | undefined;
+
+  if (source.REDIS_URL?.trim()) {
+    try {
+      const parsed = new URL(source.REDIS_URL.trim());
+
+      if (parsed.protocol !== "redis:" && parsed.protocol !== "rediss:") {
+        throw new Error("not a redis URL");
+      }
+
+      REDIS_URL = parsed.toString();
+    } catch {
+      throw new Error("REDIS_URL must be a valid redis:// or rediss:// URL");
+    }
+  }
 
   let UPSTASH_REDIS_REST_URL: string | undefined;
   let UPSTASH_REDIS_REST_TOKEN: string | undefined;
@@ -513,6 +530,7 @@ export const loadEnv = (
     ALLOW_PRIVATE_SUFFIXES,
     BLOCKLIST_FAILURE_MODE: BLOCKLIST_FAILURE_MODE as "open" | "closed",
     CONFIG_FULL_RUNTIME_VALIDATION,
+    REDIS_URL,
     UPSTASH_REDIS_REST_URL,
     UPSTASH_REDIS_REST_TOKEN,
     GLOBAL_RATE_LIMIT_PER_HOUR,

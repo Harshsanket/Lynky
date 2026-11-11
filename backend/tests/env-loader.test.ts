@@ -202,6 +202,30 @@ test("rejects a code length beyond the generator's entropy", () => {
   );
 });
 
+test("accepts optional redis and rediss REDIS_URL values", () => {
+  const redis = loadEnv({
+    ...baseEnv,
+    REDIS_URL: "redis://127.0.0.1:6379",
+  });
+  const rediss = loadEnv({
+    ...baseEnv,
+    REDIS_URL: "rediss://default:placeholder@example.com:6379",
+  });
+
+  assert.equal(redis.REDIS_URL, "redis://127.0.0.1:6379");
+  assert.equal(
+    rediss.REDIS_URL,
+    "rediss://default:placeholder@example.com:6379"
+  );
+});
+
+test("rejects a non-redis REDIS_URL", () => {
+  assert.throws(
+    () => loadEnv({ ...baseEnv, REDIS_URL: "https://example.com" }),
+    /REDIS_URL must be a valid redis:\/\/ or rediss:\/\/ URL/
+  );
+});
+
 test("private public suffixes are rejected by default", () => {
   const env = loadEnv(baseEnv);
 
