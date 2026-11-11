@@ -50,6 +50,73 @@ const Field = ({ label, value, note }) => (
   </div>
 );
 
+const MetricTable = ({ caption, columns, rows, minWidth = 720 }) => (
+  <div
+    className="overflow-x-auto border bg-white"
+    style={{ borderColor: "var(--color-border)" }}
+  >
+    <div
+      className="border-b px-4 py-3"
+      style={{ borderColor: "var(--color-border)" }}
+    >
+      <span
+        className="text-[9px] uppercase tracking-[0.14em]"
+        style={{ ...mono, color: "var(--color-ink-soft)" }}
+      >
+        {caption}
+      </span>
+    </div>
+
+    <div style={{ minWidth }}>
+      <div
+        className="grid border-b px-4 py-3"
+        style={{
+          gridTemplateColumns: `repeat(${columns.length}, minmax(0, 1fr))`,
+          borderColor: "var(--color-border)",
+        }}
+      >
+        {columns.map((label) => (
+          <span
+            key={label}
+            className="text-[9px] uppercase tracking-[0.14em]"
+            style={{ ...mono, color: "var(--color-ink-soft)" }}
+          >
+            {label}
+          </span>
+        ))}
+      </div>
+
+      {rows.map((row) => (
+        <div
+          key={row[0]}
+          className="grid border-b px-4 py-3 last:border-b-0"
+          style={{
+            gridTemplateColumns: `repeat(${columns.length}, minmax(0, 1fr))`,
+            borderColor: "var(--color-border)",
+          }}
+        >
+          {row.map((cell, index) => (
+            <span
+              key={`${row[0]}-${columns[index]}`}
+              className="text-xs"
+              style={{
+                ...(index === 0 ? body : mono),
+                color:
+                  index === 0
+                    ? "var(--color-ink)"
+                    : "var(--color-ink-soft)",
+                fontWeight: index === 0 ? 600 : 400,
+              }}
+            >
+              {cell}
+            </span>
+          ))}
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
 const Blog = () => {
   return (
     <main className="mx-auto w-full max-w-210 px-6 pt-0 pb-12 sm:px-8 sm:pt-0 sm:pb-16">
@@ -678,7 +745,7 @@ const Blog = () => {
 
         <p>
           Creation has a separate limiter, API usage reads have their own smaller
-          limiter, and BotID plus Vercel Firewall add pre-application filtering.
+          limiter, and Vercel Firewall adds pre-application filtering.
           Those are protective layers, not a promise that every legitimate burst
           fits. A shared hourly budget can reject a sudden crowd even when each
           request is valid.
@@ -704,16 +771,18 @@ const Blog = () => {
           Lynky has no analytics or tracking cookie. The public site does not set
           a cookie just to remember a visit. The admin area is different: login
           creates an opaque Mongo-backed session, and the browser receives an
-          `HttpOnly`, `Secure` in production, `SameSite=Strict` cookie. The
-          session slides for 30 minutes with an 8-hour absolute cap, and session
-          data stays in Mongo rather than Redis.
+          `HttpOnly`, `Secure` in production cookie. The backend sets
+          `SameSite=None` when the frontend and API are split across origins —
+          the frontend proxies `/sysadmin/api`, so the cookie stays first-party
+          — and `Strict` when they share an origin. The session slides for 30
+          minutes with an 8-hour absolute cap, and session data stays in Mongo
+          rather than Redis.
         </p>
 
         <div className="overflow-x-auto border" style={{ borderColor: "var(--color-border)" }}>
           {[
             ["API secret", "React memory only", "A refresh or tab restore requires re-entry."],
             ["Status/stats cache", "sessionStorage + memory", "Non-sensitive totals with a short TTL."],
-            ["Invalid-code marker", "sessionStorage", "Remembers a 404 code for optional UX."],
             ["Admin session", "HttpOnly cookie", "Opaque ID; Mongo stores only its hash."],
           ].map(([name, where, note]) => (
             <div
@@ -818,7 +887,7 @@ const Blog = () => {
             note="Create-time malicious URL and host screening."
           />
           <Field
-            label="Redis / ioredis"
+            label="Redis / Upstash"
             value="cache + counters"
             note="Hot links, rate-limit counters, click buffers, and metrics buckets."
           />
@@ -828,9 +897,9 @@ const Blog = () => {
             note="Links, aggregate stats, metrics rollups, errors, and admin sessions."
           />
           <Field
-            label="Vercel BotID + Firewall"
+            label="Vercel Firewall"
             value="selected routes"
-            note="Pre-application bot and firewall checks where deployed."
+            note="Pre-application firewall and platform edge checks where deployed."
           />
         </div>
 
@@ -889,7 +958,7 @@ const Blog = () => {
             ],
             [
               "limits",
-              "5k/hour global, route limiters, CDN, Firewall/BotID",
+              "5k/hour global, route limiters, CDN/Firewall",
               "Protects a small deployment from bursts",
               "Legitimate bursts and monitors consume the same budget",
             ],
@@ -981,6 +1050,185 @@ const Blog = () => {
             </a>
           </div>
         </div>
+      </ArticleSection>
+
+      {/* 12 / LATENCY */}
+      <ArticleSection
+        id="latency"
+        mark="12 / latency"
+        eyebrow="how production latency was cut"
+        title="Production latency fell from seconds to tens of milliseconds."
+      >
+        <p>
+          The baseline was measured with visitors arriving at the Mumbai edge,
+          functions executing in Virginia, and both databases in Mumbai.
+          Redirects exceeded 4,000 ms and creates ran around 1,000 ms. Each
+          cache operation was one HTTPS call on serverless, and every database
+          query crossed a continent.
+        </p>
+
+        <p>
+          The redirect path ran five or six cache calls in sequence; a cold
+          redirect added a database read and a synchronous visit write — eight
+          to ten network waits before the response left. Creation stacked four.
+        </p>
+
+        <div className="overflow-x-auto border" style={{ borderColor: "var(--color-border)" }}>
+          {[
+            [
+              "Redirect, warm",
+              "5–6 sequential cache calls",
+              "The redirect leaves first; side effects batch after the response.",
+            ],
+            [
+              "Redirect, cold",
+              "8–10 waits, one write inline",
+              "Two waits: one batched lookup, then the database read.",
+            ],
+            [
+              "Create link",
+              "4 sequential calls",
+              "Limiter, insert, respond; totals and invalidation run async.",
+            ],
+          ].map(([path, before, now]) => (
+            <div
+              key={path}
+              className="grid border-b px-4 py-4 last:border-b-0 sm:grid-cols-[170px_190px_1fr]"
+              style={{ borderColor: "var(--color-border)" }}
+            >
+              <span className="text-sm" style={{ ...body, color: "var(--color-ink)", fontWeight: 600 }}>
+                {path}
+              </span>
+              <span className="mt-1 text-xs sm:mt-0" style={{ ...mono, color: "var(--color-dirty)" }}>
+                was: {before}
+              </span>
+              <span className="mt-2 text-xs leading-relaxed sm:mt-0" style={{ ...body, color: "var(--color-ink-soft)" }}>
+                now: {now}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        <p>
+          <strong>Fix one.</strong> The redirect response leaves before
+          bookkeeping starts. Click counting, cache sliding, pending flushes,
+          and hot-tier promotion run after the response under waitUntil, which
+          keeps a serverless instance alive after the client disconnects.
+          Creation answers after the insert; the unique index settles same-URL
+          races instead of a pre-read lookup.
+        </p>
+
+        <p>
+          <strong>Fix two.</strong> Serverless functions cannot hold persistent
+          TCP sockets, so the cache tier uses managed REST Redis. The redirect's
+          rate-limit check, cache lookup, and write side effects share pipeline
+          batches: one or two HTTPS calls instead of five or six sequential
+          ones.
+        </p>
+
+        <p>
+          <strong>Fix three.</strong> Fluid Compute keeps a warm instance
+          serving concurrent requests, so the database connection and compiled
+          rule engine stay resident. An external pinger calls the public ping
+          endpoint every few minutes during quiet hours, so the first real
+          visitor avoids a cold start.
+        </p>
+
+        <p>
+          The deployment had been split across regions: functions in Virginia,
+          both databases in Mumbai. We standardized the stack in Mumbai —
+          backend functions in bom1, Atlas and Upstash in ap-south-1 — so no
+          request crosses a continent. A curl timing run against production
+          (100 redirects, 20 proxy creates, 10 direct creates, 10 status
+          requests) measured redirects at 65 ms p50 and 88 ms p95; proxy
+          creates at 88 ms p50 and 197 ms p95. Server-side handler time in
+          `metricsminutes` averaged 27 ms for redirects and 32 ms for creates.
+          The async ordering and pipeline batching still matter: they are why
+          handler time is tens of milliseconds instead of a chain of
+          roundtrips.
+        </p>
+
+        <MetricTable
+          caption="Client-observed percentiles · curl TTFB against production"
+          columns={["path", "samples", "p50", "p95", "p99", "max", "vs baseline"]}
+          rows={[
+            ["Redirect", "100", "65 ms", "88 ms", "114 ms", "126 ms", "13.2× / 12.9× faster"],
+            ["Create via frontend proxy", "20", "88 ms", "197 ms", "262 ms", "262 ms", "11.0× / 9.1× faster"],
+            ["Create direct backend", "10", "71 ms", "239 ms", "—", "239 ms", "—"],
+            ["Status direct", "10", "47 ms", "324 ms", "—", "324 ms", "—"],
+          ]}
+          minWidth={900}
+        />
+
+        <MetricTable
+          caption="Server-side handler time · metricsminutes, same production run"
+          columns={["route", "requests", "before avg", "avg now", "max", "cache hit/miss", "429 / 5xx", "verdict"]}
+          rows={[
+            ["/:code", "83", "606 ms", "27 ms", "366 ms", "59 / 23", "0 / 0", "22.4× faster"],
+            ["/api/v1/urls", "29", "538 ms", "32 ms", "259 ms", "—", "0 / 0", "16.8× faster"],
+          ]}
+          minWidth={960}
+        />
+
+        <MetricTable
+          caption="Before/after · client TTFB unless marked server-side"
+          columns={["metric", "before", "now", "target", "verdict"]}
+          rows={[
+            ["Redirect p50", "859 ms", "65 ms", "—", "13.2× faster"],
+            ["Redirect p95", "1,133 ms", "88 ms", "≈250 ms", "12.9× faster"],
+            ["Create p50", "965 ms", "88 ms", "—", "11.0× faster"],
+            ["Create p95", "1,798 ms", "197 ms", "≈300 ms", "9.1× faster"],
+            ["Server redirect avg", "606 ms", "27 ms", "—", "22.4× faster"],
+            ["Server create avg", "538 ms", "32 ms", "—", "16.8× faster"],
+          ]}
+        />
+
+        <div
+          className="grid gap-px border sm:grid-cols-2"
+          style={{
+            borderColor: "var(--color-border)",
+            backgroundColor: "var(--color-border)",
+          }}
+        >
+          <Field
+            label="redirect response"
+            value="sent first"
+            note="The 302 leaves before counting starts; bookkeeping runs under waitUntil after the client is gone."
+          />
+          <Field
+            label="cache calls per redirect"
+            value="1–2 batched"
+            note="Limiter, lookup, and side effects share pipeline calls instead of sequential HTTPS requests."
+          />
+          <Field
+            label="cold-start tail"
+            value="mostly gone"
+            note="Fluid Compute keeps instances warm; an external pinger taps the ping endpoint every few minutes."
+          />
+          <Field
+            label="data region"
+            value="bom1 + ap-south-1"
+            note="All Mumbai: functions execute in bom1; Atlas and Upstash are both ap-south-1. No cross-region hop remains."
+          />
+          <Field
+            label="redirect p95"
+            value="88 ms"
+            note="100 client-observed curl samples; includes edge and network time."
+          />
+          <Field
+            label="create p95"
+            value="197 ms"
+            note="20 frontend-proxy samples; includes edge and network time."
+          />
+        </div>
+
+        <p>
+          The design table counts network waits. The measured tables are
+          production runs, not staged benchmarks: client TTFB includes edge and
+          network time, while the handler table excludes them. The appendix
+          lists what the test suite covers, and the sysadmin telemetry cards
+          show live production numbers.
+        </p>
       </ArticleSection>
 
       {/* APPENDIX / VERIFICATION */}
