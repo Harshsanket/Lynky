@@ -6,7 +6,6 @@ import { env } from "./config/env.js";
 import { validateUrl } from "../service/url-validator.service.js";
 import { initializeEngines } from "../service/engines/runtime.js";
 import { initializeCache } from "../service/redis.client.js";
-import { ensureLinkIndexesReady } from "../service/link-index.service.js";
 import { startTelemetrySampler } from "../service/telemetry.service.js";
 import { logError, logInfo } from "../service/logger.js";
 
@@ -83,7 +82,6 @@ const logEffectiveConfig = (): void => {
     clickFlushEveryN: env.CLICK_FLUSH_EVERY_N,
     clickFlushIntervalMs: env.CLICK_FLUSH_INTERVAL_MS,
     clickPendingTtlSeconds: env.CLICK_PENDING_TTL_SECONDS,
-    sysadminEnabled: env.SYSADMIN_ENABLED,
   });
 };
 
@@ -96,7 +94,6 @@ const startServer = async () => {
 
   await initializeCache();
   await connectDatabase();
-  await ensureLinkIndexesReady();
 
   startTelemetrySampler();
 

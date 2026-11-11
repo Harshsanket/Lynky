@@ -24,8 +24,6 @@ import healthRoutes from "../routes/health.routes.js";
 import pingRoutes from "../routes/ping.routes.js";
 import urlRoutes from "../routes/url.routes.js";
 import externalApiRoutes from "../routes/external-api.routes.js";
-import apiKeyRoutes from "../routes/api-key.routes.js";
-import statsRoutes from "../routes/stats.routes.js";
 import statusRoutes from "../routes/status.routes.js";
 import adminRoutes from "../routes/admin.routes.js";
 import redirectRoutes from "../routes/redirect.routes.js";
@@ -94,12 +92,6 @@ app.use(
   databaseConnectionMiddleware,
   externalApiRoutes
 );
-
-// API-key management (all endpoints disabled until admin UI exists).
-app.use("/api/v1/api-keys", apiKeyRoutes);
-
-// Global stats counter (legacy `/stats/links` endpoint).
-app.use("/api/v1", databaseConnectionMiddleware, statsRoutes);
 
 // Short-code redirect: `/<code>` → original (cleaned) destination.
 app.use("/", redirectRoutes);

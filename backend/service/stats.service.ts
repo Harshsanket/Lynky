@@ -214,12 +214,3 @@ export const scheduleTotalLinksIncrement = (): void => {
   pendingTotalLinks++;
   scheduleTotalLinksFlush();
 };
-
-/**
- * Read the current global counter through the cached snapshot.
- */
-export const getTotalLinks = async (): Promise<number> => {
-  const snapshot = await getStatsSnapshot();
-
-  return snapshot.totalLinks;
-};

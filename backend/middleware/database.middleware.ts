@@ -1,6 +1,5 @@
 import type { Request, Response, NextFunction } from "express";
 import { connectDatabase } from "../database/index.database.js";
-import { ensureLinkIndexesReady } from "../service/link-index.service.js";
 import { logError } from "../service/logger.js";
 
 /**
@@ -14,7 +13,6 @@ export const databaseConnectionMiddleware = async (
 ) => {
   try {
     await connectDatabase();
-    await ensureLinkIndexesReady();
 
     next();
   } catch (error) {
