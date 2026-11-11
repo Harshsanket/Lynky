@@ -129,6 +129,7 @@ docker-compose.override.yml
 /.github/
 /docs/
 /backend/bench/
+/opencode.json
 frontend/.gitignore
 backend/.gitignore
 
