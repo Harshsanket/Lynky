@@ -122,14 +122,6 @@ const clearFailures = async (
 };
 
 export const ensureAdminConfigured = (): void => {
-  if (!env.SYSADMIN_ENABLED) {
-    throw new AdminAuthError(
-      "Admin access is disabled.",
-      503,
-      "admin_disabled"
-    );
-  }
-
   if (!env.SYSADMIN_USERNAME || !env.SYSADMIN_PASSWORD_HASH) {
     throw new AdminAuthError(
       "Admin access is not configured.",

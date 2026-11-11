@@ -157,16 +157,6 @@ export const adminSessionController = async (
 ) => {
   noStore(res);
 
-  if (!envEnabled()) {
-    return res.status(200).json({
-      success: true,
-      data: {
-        authenticated: false,
-        disabled: true,
-      },
-    });
-  }
-
   try {
     const session = await getAdminSessionFromRequest(req);
 
@@ -197,8 +187,6 @@ export const adminSessionController = async (
     });
   }
 };
-
-const envEnabled = (): boolean => env.SYSADMIN_ENABLED;
 
 export const adminMetricsController = async (
   req: Request,

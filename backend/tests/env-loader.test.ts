@@ -223,28 +223,23 @@ test("rejects a code length beyond the generator's entropy", () => {
   );
 });
 
-test("accepts optional redis and rediss REDIS_URL values", () => {
-  const redis = loadEnv({
+test("allows full runtime validation only outside production", () => {
+  const development = loadEnv({
     ...baseEnv,
-    REDIS_URL: "redis://127.0.0.1:6379",
-  });
-  const rediss = loadEnv({
-    ...baseEnv,
-    REDIS_URL: "rediss://default:placeholder@example.com:6379",
+    CONFIG_FULL_RUNTIME_VALIDATION: "true",
   });
 
-  assert.equal(redis.REDIS_URL, "redis://127.0.0.1:6379");
-  assert.equal(
-    rediss.REDIS_URL,
-    "rediss://default:placeholder@example.com:6379"
-  );
-});
+  assert.equal(development.CONFIG_FULL_RUNTIME_VALIDATION, true);
 
-test("rejects a non-redis REDIS_URL", () => {
-  assert.throws(
-    () => loadEnv({ ...baseEnv, REDIS_URL: "https://example.com" }),
-    /REDIS_URL must be a valid redis:\/\/ or rediss:\/\/ URL/
-  );
+  const production = loadEnv({
+    ...baseEnv,
+    ...upstashEnv,
+    NODE_ENV: "production",
+    FRONTEND_URL: "https://lynky.example",
+    CONFIG_FULL_RUNTIME_VALIDATION: "true",
+  });
+
+  assert.equal(production.CONFIG_FULL_RUNTIME_VALIDATION, false);
 });
 
 test("private public suffixes are rejected by default", () => {

@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ARTIFACT_SCHEMA_VERSION, ENGINE_VERSION } from "./engine-version.js";
+import { env } from "./env.js";
 import type {
   AllowlistArtifact,
   ArtifactManifest,
@@ -374,13 +375,7 @@ let compiledArtifactsSchema:
   | typeof import("./schemas/compiled.js").compiledArtifactsSchema
   | null = null;
 
-if (
-  ["1", "true"].includes(
-    (process.env.CONFIG_FULL_RUNTIME_VALIDATION ?? "")
-      .trim()
-      .toLowerCase()
-  )
-) {
+if (env.CONFIG_FULL_RUNTIME_VALIDATION) {
   const module = await import("./schemas/compiled.js");
   compiledArtifactsSchema = module.compiledArtifactsSchema;
 }

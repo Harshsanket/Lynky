@@ -135,7 +135,7 @@ const SysAdmin = () => {
           return;
         }
 
-        setSession(data?.disabled ? { disabled: true } : null);
+        setSession(null);
       })
       .catch((loadError) => {
         if (!cancelled) setError(loadError.message);
@@ -198,15 +198,6 @@ const SysAdmin = () => {
     return (
       <main className="mx-auto flex w-full max-w-5xl flex-1 items-center justify-center px-6 py-16">
         <p className="font-mono text-sm text-ink-soft">loading sysadmin…</p>
-      </main>
-    );
-  }
-
-  if (session?.disabled) {
-    return (
-      <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-4 px-6 py-16">
-        <h1 className="font-display text-3xl">Sysadmin</h1>
-        <p className="text-ink-soft">Admin access is disabled.</p>
       </main>
     );
   }

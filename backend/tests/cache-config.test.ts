@@ -76,7 +76,6 @@ test("defaults cache and click settings", () => {
   assert.equal(env.CLICK_STORAGE_MODE, "hybrid");
   assert.equal(env.CLICK_FLUSH_EVERY_N, 10);
   assert.equal(env.CLICK_PENDING_TTL_SECONDS, 86400);
-  assert.equal(env.SYSADMIN_ENABLED, false);
 });
 
 test("accepts Upstash REST credentials and normalises the URL", () => {
@@ -162,17 +161,16 @@ test("validates the click storage mode", () => {
   );
 });
 
-test("requires sysadmin credentials only when enabled", () => {
-  assert.throws(
-    () => loadEnv({ ...baseEnv, SYSADMIN_ENABLED: "true" }),
-    /SYSADMIN_USERNAME is required/
-  );
+test("validates sysadmin credentials when configured", () => {
+  const unconfigured = loadEnv(baseEnv);
+
+  assert.equal(unconfigured.SYSADMIN_USERNAME, undefined);
+  assert.equal(unconfigured.SYSADMIN_PASSWORD_HASH, undefined);
 
   assert.throws(
     () =>
       loadEnv({
         ...baseEnv,
-        SYSADMIN_ENABLED: "true",
         SYSADMIN_USERNAME: "Bad Name",
       }),
     /SYSADMIN_USERNAME must be/
@@ -182,7 +180,6 @@ test("requires sysadmin credentials only when enabled", () => {
     () =>
       loadEnv({
         ...baseEnv,
-        SYSADMIN_ENABLED: "true",
         SYSADMIN_USERNAME: "ops.a",
         SYSADMIN_PASSWORD_HASH: "not-a-hash",
       }),
@@ -191,11 +188,9 @@ test("requires sysadmin credentials only when enabled", () => {
 
   const env = loadEnv({
     ...baseEnv,
-    SYSADMIN_ENABLED: "true",
     SYSADMIN_USERNAME: "ops.a",
     SYSADMIN_PASSWORD_HASH: `scrypt:${"a".repeat(32)}:${"b".repeat(128)}`,
   });
 
-  assert.equal(env.SYSADMIN_ENABLED, true);
   assert.equal(env.SYSADMIN_USERNAME, "ops.a");
 });

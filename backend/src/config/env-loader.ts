@@ -33,7 +33,6 @@ export interface AppEnv {
   ALLOW_PRIVATE_SUFFIXES: boolean;
   BLOCKLIST_FAILURE_MODE: "open" | "closed";
   CONFIG_FULL_RUNTIME_VALIDATION: boolean;
-  REDIS_URL: string | undefined;
   UPSTASH_REDIS_REST_URL: string | undefined;
   UPSTASH_REDIS_REST_TOKEN: string | undefined;
   GLOBAL_RATE_LIMIT_PER_HOUR: number;
@@ -47,7 +46,6 @@ export interface AppEnv {
   CLICK_FLUSH_EVERY_N: number;
   CLICK_FLUSH_INTERVAL_MS: number;
   CLICK_PENDING_TTL_SECONDS: number;
-  SYSADMIN_ENABLED: boolean;
   SYSADMIN_USERNAME: string | undefined;
   SYSADMIN_PASSWORD_HASH: string | undefined;
 }
@@ -323,29 +321,19 @@ export const loadEnv = (
     );
   }
 
-  const CONFIG_FULL_RUNTIME_VALIDATION = ["1", "true"].includes(
-    (source.CONFIG_FULL_RUNTIME_VALIDATION ?? "").trim().toLowerCase()
-  );
+  /*
+   * Full artifact validation is a development-only gate. Production keeps the
+   * fast compiled-artifact path regardless of the environment value.
+   */
+  const CONFIG_FULL_RUNTIME_VALIDATION =
+    !isProduction &&
+    ["1", "true"].includes(
+      (source.CONFIG_FULL_RUNTIME_VALIDATION ?? "").trim().toLowerCase()
+    );
 
   /* ------------------------------------------------------------------------ */
   /*  Redis cache / click accounting / global limit                           */
   /* ------------------------------------------------------------------------ */
-
-  let REDIS_URL: string | undefined;
-
-  if (source.REDIS_URL?.trim()) {
-    try {
-      const parsed = new URL(source.REDIS_URL.trim());
-
-      if (parsed.protocol !== "redis:" && parsed.protocol !== "rediss:") {
-        throw new Error("not a redis URL");
-      }
-
-      REDIS_URL = parsed.toString();
-    } catch {
-      throw new Error("REDIS_URL must be a valid redis:// or rediss:// URL");
-    }
-  }
 
   let UPSTASH_REDIS_REST_URL: string | undefined;
   let UPSTASH_REDIS_REST_TOKEN: string | undefined;
@@ -492,10 +480,6 @@ export const loadEnv = (
   /*  Sysadmin                                                                */
   /* ------------------------------------------------------------------------ */
 
-  const SYSADMIN_ENABLED = ["1", "true"].includes(
-    (source.SYSADMIN_ENABLED ?? "").trim().toLowerCase()
-  );
-
   const SYSADMIN_USERNAME = source.SYSADMIN_USERNAME?.trim() || undefined;
   const SYSADMIN_PASSWORD_HASH =
     source.SYSADMIN_PASSWORD_HASH?.trim() || undefined;
@@ -521,23 +505,10 @@ export const loadEnv = (
     );
   }
 
-  if (SYSADMIN_ENABLED && !SYSADMIN_USERNAME) {
-    throw new Error(
-      "SYSADMIN_USERNAME is required when SYSADMIN_ENABLED=true"
-    );
-  }
-
-  if (SYSADMIN_ENABLED && !SYSADMIN_PASSWORD_HASH) {
-    throw new Error(
-      "SYSADMIN_PASSWORD_HASH is required when SYSADMIN_ENABLED=true"
-    );
-  }
-
   return {
     ALLOW_PRIVATE_SUFFIXES,
     BLOCKLIST_FAILURE_MODE: BLOCKLIST_FAILURE_MODE as "open" | "closed",
     CONFIG_FULL_RUNTIME_VALIDATION,
-    REDIS_URL,
     UPSTASH_REDIS_REST_URL,
     UPSTASH_REDIS_REST_TOKEN,
     GLOBAL_RATE_LIMIT_PER_HOUR,
@@ -551,7 +522,6 @@ export const loadEnv = (
     CLICK_FLUSH_EVERY_N,
     CLICK_FLUSH_INTERVAL_MS,
     CLICK_PENDING_TTL_SECONDS,
-    SYSADMIN_ENABLED,
     SYSADMIN_USERNAME,
     SYSADMIN_PASSWORD_HASH,
     PORT,

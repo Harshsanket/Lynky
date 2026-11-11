@@ -11,7 +11,6 @@ process.env.MONGODB_URI =
 process.env.ENCRYPTION_KEY = "test-encryption-key-0123456789abcdef";
 process.env.PUBLIC_URL = "https://lynky.test";
 process.env.EXPIRATION_DAYS = "30";
-process.env.SYSADMIN_ENABLED = "true";
 process.env.SYSADMIN_USERNAME = "ops.a";
 process.env.SYSADMIN_PASSWORD_HASH = createPasswordHash(password);
 
