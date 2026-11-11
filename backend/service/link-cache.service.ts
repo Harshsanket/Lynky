@@ -133,9 +133,10 @@ export const invalidateLinkCache = async (
   options: { throwOnError?: boolean } = {}
 ): Promise<void> => {
   try {
-    const store = getCacheStore();
-    await store.del(linkKey(code));
-    await store.del(hotKey(code));
+    await getCacheStore().pipeline([
+      { type: "del", key: linkKey(code) },
+      { type: "del", key: hotKey(code) },
+    ]);
   } catch (error) {
     if (options.throwOnError) {
       throw error;

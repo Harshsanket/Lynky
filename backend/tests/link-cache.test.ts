@@ -85,6 +85,30 @@ test("invalidates both link and hot keys", async () => {
   assert.equal(await getCacheStore().get("hot:gone"), null);
 });
 
+test("invalidates link and hot keys in a single pipeline call", async () => {
+  const batchingStore = new MemoryCacheStore();
+  const originalPipeline = batchingStore.pipeline.bind(batchingStore);
+  let pipelineCalls = 0;
+
+  batchingStore.pipeline = async (commands) => {
+    pipelineCalls += 1;
+    await originalPipeline(commands);
+  };
+
+  setCacheStoreForTests(batchingStore);
+
+  await batchingStore.set("link:batched", "ciphertext", 60);
+  await batchingStore.set("hot:batched", "1", 60);
+
+  await invalidateLinkCache("batched");
+
+  assert.equal(pipelineCalls, 1);
+  assert.equal(await batchingStore.get("link:batched"), null);
+  assert.equal(await batchingStore.get("hot:batched"), null);
+
+  setCacheStoreForTests(store);
+});
+
 test("counts visits in the current and previous window", async () => {
   assert.ok((await recordVisitWindow("window")) >= 1);
   assert.ok((await recordVisitWindow("window")) >= 2);
@@ -126,6 +150,9 @@ test("cache failures degrade without throwing", async () => {
       throw new Error("redis down");
     },
     sRem: async () => {
+      throw new Error("redis down");
+    },
+    pipeline: async () => {
       throw new Error("redis down");
     },
   };

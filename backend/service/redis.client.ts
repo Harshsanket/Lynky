@@ -12,7 +12,8 @@ import { logInfo } from "./logger.js";
 export type CachePipelineCommand =
   | { type: "hSet"; key: string; field: string; value: string }
   | { type: "hIncrBy"; key: string; field: string; delta: number }
-  | { type: "expire"; key: string; ttlSeconds: number };
+  | { type: "expire"; key: string; ttlSeconds: number }
+  | { type: "del"; key: string };
 
 export interface CacheStore {
   get(key: string): Promise<string | null>;
@@ -224,8 +225,10 @@ export class MemoryCacheStore implements CacheStore {
         await this.hSet(command.key, command.field, command.value);
       } else if (command.type === "hIncrBy") {
         await this.hIncrBy(command.key, command.field, command.delta);
-      } else {
+      } else if (command.type === "expire") {
         await this.expire(command.key, command.ttlSeconds);
+      } else {
+        await this.del(command.key);
       }
     }
   }
@@ -359,11 +362,13 @@ class UpstashCacheStore implements CacheStore {
           command.field,
           command.delta
         );
-      } else {
+      } else if (command.type === "expire") {
         pipeline.expire(
           prefixed(command.key),
           command.ttlSeconds
         );
+      } else {
+        pipeline.del(prefixed(command.key));
       }
     }
 
