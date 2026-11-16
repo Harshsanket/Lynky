@@ -319,16 +319,18 @@ const Blog = () => {
         </div>
 
         <p>
-          Lynky compiles ClearURLs and its own tracker rules into{" "}
-          <b style={{ color: "var(--color-ink)" }}>about 200 providers</b> and{" "}
-          <b style={{ color: "var(--color-ink)" }}>roughly 950 rule entries</b>.
+          Lynky compiles ClearURLs, AdGuard TrackParamFilter, Actually Legitimate
+          URL Shortener, and its own tracker rules into{" "}
+          <b style={{ color: "var(--color-ink)" }}>about 2,300 providers</b> and{" "}
+          <b style={{ color: "var(--color-ink)" }}>roughly 7,400 rule entries</b>.
           Provider order is preserved. A host index selects candidates, a
           fallback bucket keeps unmatched patterns available, and the original
           provider regex is still the final authority. The index is a prefilter,
           never an authorization shortcut. Rules compile into exact sets, prefix
-          arrays, and regex arrays; duplicate and overlap reports are produced at
-          build time, provider order is preserved, and the allowlist is checked
-          before every removal path.
+          arrays, key regexes, and value-conditioned pair patterns; excluded-host
+          sets skip generic groups on listed hosts, and upstream exceptions union
+          into the allowlist before every removal path. Duplicate and overlap
+          reports are produced at build time.
         </p>
 
         <TwoJobsFigure />
@@ -337,10 +339,11 @@ const Blog = () => {
           Wrapper unwrapping happens before ordinary parameter removal. Known
           redirect parameters are unwrapped recursively within a bounded depth,
           then the cleaner returns to the final destination. Provider rules,
-          referral rules, raw URL rules, global tracker groups, allowlists, and
-          exceptions each have a defined stage. The allowlist is checked before
-          every removal path, because a `v` on YouTube or a `tag` on Amazon is
-          functional data, not tracking noise.
+          referral rules, raw URL rules, global tracker groups, the upstream
+          exception overlay, and value-conditioned pair rules each have a
+          defined stage. The allowlist is checked before every removal path,
+          because a `v` on YouTube or a `tag` on Amazon is functional data, not
+          tracking noise.
         </p>
 
         <p>
@@ -728,13 +731,23 @@ const Blog = () => {
           />
           <Field
             label="blocklist lookup"
-            value="1.62 µs p99"
-            note="Local benchmark; load time about 5.3 ms."
+            value="1.63 / 1.75 µs p99"
+            note="Blocked / clean host lookup; local benchmark, load time about 5.6 ms."
+          />
+          <Field
+            label="tracking rules"
+            value="~6.9k normalized"
+            note="AdGuard TrackParamFilter plus Legitimate URL Shortener; parsed at build time."
+          />
+          <Field
+            label="pair regexes"
+            value="354"
+            note="Value-conditioned rules evaluated only on params that survive exact, prefix, and host-scoped paths."
           />
           <Field
             label="full clean"
-            value="9 µs p99"
-            note="Local compiled cleaner benchmark, not end-to-end latency."
+            value="17.5 µs p50 · 47.8 µs p99"
+            note="Local full-clean orchestrator benchmark over five URLs; not end-to-end latency."
           />
           <Field
             label="boot / cold start"
@@ -776,7 +789,8 @@ const Blog = () => {
           the frontend proxies `/sysadmin/api`, so the cookie stays first-party
           — and `Strict` when they share an origin. The session slides for 30
           minutes with an 8-hour absolute cap, and session data stays in Mongo
-          rather than Redis.
+          rather than Redis. The same proxy handles `/api/v1`, so browser API
+          traffic stays same-origin and no CORS preflight is needed.
         </p>
 
         <div className="overflow-x-auto border" style={{ borderColor: "var(--color-border)" }}>
@@ -806,8 +820,8 @@ const Blog = () => {
         <p>
           The API secret is intentionally not persisted. It exists in React state
           while the usage page is mounted; closing or refreshing the page forces
-          re-entry. The status cache and invalid-code marker are transient UX
-          state, not identity or tracking data.
+          re-entry. The status cache is transient UX state, not identity or
+          tracking data.
         </p>
       </ArticleSection>
 
@@ -867,9 +881,9 @@ const Blog = () => {
             note="IPv4/IPv6 range checks, including mapped and compatible forms."
           />
           <Field
-            label="ClearURLs"
-            value="tracker/provider rules"
-            note="Community-maintained cleaning data compiled into the provider set."
+            label="tracker datasets"
+            value="ClearURLs + AdGuard + LUS"
+            note="Community-maintained cleaning data compiled into one deduplicated provider and generic rule set."
           />
           <Field
             label="HaGeZi"
@@ -934,7 +948,7 @@ const Blog = () => {
             ],
             [
               "provider/rules",
-              "host hints + fallback + original regex; exact/prefix/regex buckets",
+              "host hints + fallback + original regex; exact/prefix/regex/pair buckets",
               "Avoids scanning every provider while preserving order and correctness",
               "A missed hint falls into the fallback bucket",
             ],
@@ -1060,11 +1074,14 @@ const Blog = () => {
         title="Production latency fell from seconds to tens of milliseconds."
       >
         <p>
-          The baseline was measured with visitors arriving at the Mumbai edge,
-          functions executing in Virginia, and both databases in Mumbai.
-          Redirects exceeded 4,000 ms and creates ran around 1,000 ms. Each
-          cache operation was one HTTPS call on serverless, and every database
-          query crossed a continent.
+          The measured baseline in the table below comes from the split-region
+          deployment: visitors arrived at the Mumbai edge, functions executed in
+          Virginia, and both databases stayed in Mumbai. Redirects measured
+          859 ms p50 and 1,133 ms p95; creates measured 965 ms p50 and
+          1,798 ms p95. An earlier chain-of-round-trips build was slower still —
+          redirects above 4,000 ms and creates around 1,000 ms — before the
+          batching work. Each cache operation was one HTTPS call on serverless,
+          and every database query crossed a continent.
         </p>
 
         <p>
@@ -1129,9 +1146,9 @@ const Blog = () => {
         <p>
           <strong>Fix three.</strong> Fluid Compute keeps a warm instance
           serving concurrent requests, so the database connection and compiled
-          rule engine stay resident. An external pinger calls the public ping
-          endpoint every few minutes during quiet hours, so the first real
-          visitor avoids a cold start.
+          rule engine stay resident. An Upstash QStash schedule
+          (`*/5 * * * *`) POSTs `/api/v1/ping` every five minutes around the
+          clock, so the first real visitor avoids a cold start.
         </p>
 
         <p>
@@ -1275,7 +1292,7 @@ const Blog = () => {
             [
               "benchmarks",
               "Blocklist lookup, provider match, full clean, create/redirect/status/stats",
-              "tinybench + autocannon, dev-only report artifacts",
+              "scripted load harness, dev-only report artifacts",
               "Performance work needs a regression baseline",
             ],
             [

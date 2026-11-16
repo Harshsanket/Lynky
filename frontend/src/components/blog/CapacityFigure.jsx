@@ -8,7 +8,7 @@ import FigureFrame from "./FigureFrame";
 
 const LAYERS = [
   ["edge cache", "status / stats / not-found"],
-  ["firewall + BotID", "pre-application filtering"],
+  ["Vercel Firewall", "pre-application filtering"],
   ["global budget", "5,000 requests / hour"],
   ["route limiters", "create + usage reads"],
   ["origin", "Mongo / Redis / redirect"],
