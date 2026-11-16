@@ -438,9 +438,9 @@ export const createShortUrlFromPrepared = async (
 
       if (!codeHashCollision) {
         /*
-         * The legacy plaintext `code` index is not sparse. This is a schema
-         * problem, not a short-code collision; the startup index guard repairs
-         * it. Log it distinctly so it cannot masquerade as exhaustion.
+         * An unexpected non-codeHash index collision is a schema problem, not
+         * a short-code collision. Log it distinctly so it cannot masquerade as
+         * exhaustion.
          */
         logWarn("SHORT CODE COLLISION", {
           operation: "createShortUrl",

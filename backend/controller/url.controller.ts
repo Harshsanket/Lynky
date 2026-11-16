@@ -122,7 +122,11 @@ export const createShortUrlController = async (
 
     if (error instanceof ShortCodeExhaustedError) {
       markRequestMetric(res, "shortCodeExhausted");
-      setMetricErrorCode(res, "short_code_exhausted");
+      setMetricErrorCode(
+        res,
+        "short_code_exhausted",
+        "Unable to generate a short code right now. Please try again."
+      );
 
       return res.status(error.statusCode).json({
         success: false,
@@ -131,8 +135,10 @@ export const createShortUrlController = async (
     }
 
     const isPublic = error instanceof PublicError;
+    const message = getPublicErrorMessage(error, "Unable to shorten URL");
 
     if (!isPublic) {
+      setMetricErrorCode(res, "request_error", "Unable to shorten URL");
       logError("request_error", error, {
         errorCode: "request_error",
         operation: "createShortUrlController",
@@ -141,10 +147,7 @@ export const createShortUrlController = async (
 
     return res.status(isPublic ? 400 : 500).json({
       success: false,
-      message: getPublicErrorMessage(
-        error,
-        "Unable to shorten URL"
-      ),
+      message,
     });
   }
 };

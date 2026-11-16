@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { getStatsSnapshot } from "../service/stats.service.js";
 import { logError } from "../service/logger.js";
+import { setMetricErrorCode } from "../service/metrics.service.js";
 import {
   setStatsCacheHeaders,
   setStatusCacheHeaders,
@@ -21,6 +22,11 @@ export const statusController = async (
       ...(stats.stale ? { stale: true } : {}),
     });
   } catch (error) {
+    setMetricErrorCode(
+      res,
+      "status_unavailable",
+      "Status is unavailable."
+    );
     logError("status_read_error", error, {
       errorCode: "status_unavailable",
       operation: "statusController",
@@ -55,6 +61,11 @@ export const publicStatsController = async (
       ...(stats.stale ? { stale: true } : {}),
     });
   } catch (error) {
+    setMetricErrorCode(
+      res,
+      "stats_unavailable",
+      "Stats are unavailable."
+    );
     logError("stats_read_error", error, {
       errorCode: "stats_unavailable",
       operation: "publicStatsController",

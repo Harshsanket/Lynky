@@ -29,7 +29,10 @@ import {
   sendShortLinkNotFound,
   sendSuccessfulRedirect,
 } from "../service/redirect-response.service.js";
-import { markRequestMetric } from "../service/metrics.service.js";
+import {
+  markRequestMetric,
+  setMetricErrorCode,
+} from "../service/metrics.service.js";
 import { runInBackground } from "../src/utils/background.js";
 
 const validateStoredDestination = (originalUrl: string): void => {
@@ -188,6 +191,11 @@ export const redirectToOriginalUrl = async (
       link = await findLinkForRedirect(code);
       markRequestMetric(res, "mongoCalls");
     } catch (error) {
+      setMetricErrorCode(
+        res,
+        "database_unavailable",
+        "Database is unavailable, please try again later"
+      );
       logError("request_error", error, {
         errorCode: "database_unavailable",
         operation: "redirectToOriginalUrl",
@@ -213,6 +221,11 @@ export const redirectToOriginalUrl = async (
     try {
       originalUrl = decryptUrl(link.originalUrl);
     } catch (error) {
+      setMetricErrorCode(
+        res,
+        "redirect_decrypt_error",
+        "Unable to resolve destination"
+      );
       logError("request_error", error, {
         errorCode: "redirect_decrypt_error",
         operation: "redirectToOriginalUrl",
@@ -237,6 +250,11 @@ export const redirectToOriginalUrl = async (
           kind: "policy",
         });
       } else {
+        setMetricErrorCode(
+          res,
+          "redirect_corruption",
+          "Unable to resolve destination"
+        );
         logError("request_error", error, {
           errorCode: "redirect_corruption",
           operation: "redirectToOriginalUrl",
@@ -257,6 +275,7 @@ export const redirectToOriginalUrl = async (
     sendSuccessfulRedirect(res, originalUrl);
     scheduleColdSuccess(code, link.expiresAt, link.originalUrl);
   } catch (error) {
+    setMetricErrorCode(res, "request_error", "Unable to redirect");
     logError("request_error", error, {
       errorCode: "request_error",
       operation: "redirectToOriginalUrl",

@@ -55,7 +55,7 @@ run("stores one report per run and returns the latest", async () => {
     failures: {},
     redirects: {},
     storage: {},
-    failSafes: [],
+    failSafes: {},
     security: {},
     telemetry: {},
     artifacts: {},

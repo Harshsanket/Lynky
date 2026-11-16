@@ -602,9 +602,9 @@ const SysAdmin = () => {
         {errors.length === 0 ? (
           <p className="text-sm text-ink-soft">No errors recorded.</p>
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-border">
+          <div className="max-h-48 overflow-x-auto overflow-y-auto rounded-lg border border-border">
             <table className="w-full min-w-[640px] text-left text-sm">
-              <thead className="bg-bg-alt font-mono text-xs text-ink-soft">
+              <thead className="sticky top-0 z-10 bg-bg-alt font-mono text-xs text-ink-soft">
                 <tr>
                   <th className="px-3 py-2">time</th>
                   <th className="px-3 py-2">route</th>

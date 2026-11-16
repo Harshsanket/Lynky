@@ -16,6 +16,7 @@ import {
   getDashboardMetrics,
   listErrors,
   markRequestMetric,
+  setMetricErrorCode,
 } from "../service/metrics.service.js";
 import { getLatestTestReport } from "../service/test-report.service.js";
 import { logError } from "../service/logger.js";
@@ -101,6 +102,7 @@ export const adminLoginController = async (
       return sendAuthError(res, error);
     }
 
+    setMetricErrorCode(res, "admin_login_error", "Unable to sign in.");
     logError("admin_login_error", error, {
       errorCode: "admin_login_error",
     });
@@ -140,6 +142,7 @@ export const adminLogoutController = async (
       return sendAuthError(res, error);
     }
 
+    setMetricErrorCode(res, "admin_logout_error", "Unable to sign out.");
     logError("admin_logout_error", error, {
       errorCode: "admin_logout_error",
     });
@@ -177,6 +180,11 @@ export const adminSessionController = async (
       },
     });
   } catch (error) {
+    setMetricErrorCode(
+      res,
+      "admin_session_error",
+      "Admin session is unavailable."
+    );
     logError("admin_session_error", error, {
       errorCode: "admin_session_error",
     });
@@ -207,6 +215,11 @@ export const adminMetricsController = async (
       return sendAuthError(res, error);
     }
 
+    setMetricErrorCode(
+      res,
+      "admin_metrics_error",
+      "Metrics are unavailable."
+    );
     logError("admin_metrics_error", error, {
       errorCode: "admin_metrics_error",
     });
@@ -249,6 +262,11 @@ export const adminBenchmarkReportController = async (
       return sendAuthError(res, error);
     }
 
+    setMetricErrorCode(
+      res,
+      "admin_benchmark_report_error",
+      "Benchmark report is unavailable."
+    );
     logError("admin_benchmark_report_error", error, {
       errorCode: "admin_benchmark_report_error",
     });
@@ -282,6 +300,11 @@ export const adminErrorsController = async (
       return sendAuthError(res, error);
     }
 
+    setMetricErrorCode(
+      res,
+      "admin_errors_error",
+      "Errors are unavailable."
+    );
     logError("admin_errors_error", error, {
       errorCode: "admin_errors_error",
     });

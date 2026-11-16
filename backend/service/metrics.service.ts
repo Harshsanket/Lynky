@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { Request, Response } from "express";
 import {
   ErrorLog,
@@ -18,7 +19,6 @@ export interface RequestMetricFields {
   redisMiss: number;
   mongoCalls: number;
   redisCalls: number;
-  botBlocks: number;
   authFailures: number;
   shortCodeExhausted: number;
 }
@@ -30,7 +30,6 @@ export const emptyRequestMetrics = (): RequestMetricFields => ({
   redisMiss: 0,
   mongoCalls: 0,
   redisCalls: 0,
-  botBlocks: 0,
   authFailures: 0,
   shortCodeExhausted: 0,
 });
@@ -51,9 +50,14 @@ export const markRequestMetric = (
 
 export const setMetricErrorCode = (
   res: Response,
-  errorCode: string
+  errorCode: string,
+  message?: string
 ): void => {
   res.locals.errorCode = errorCode;
+
+  if (message) {
+    res.locals.errorMessage = message;
+  }
 };
 
 const MINUTE_MS = 60_000;
@@ -79,7 +83,6 @@ const ROLLUP_FIELDS = [
   "latencySum",
   "latencyCount",
   "errorCount",
-  "botBlocks",
   "authFailures",
   "shortCodeExhausted",
 ] as const;
@@ -169,7 +172,7 @@ const flushOneMinute = async (epoch: number): Promise<void> => {
   const routes = await store.sMembers(minuteRoutesKey(epoch));
 
   for (const route of routes) {
-    const values = await store.hGetAll(minuteKey(epoch, route));
+    const values = await store.getHashAndDelete(minuteKey(epoch, route));
     const inc = rollupInc(values);
 
     if (Object.keys(inc).length > 0) {
@@ -213,7 +216,6 @@ const flushOneMinute = async (epoch: number): Promise<void> => {
       );
     }
 
-    await store.del(minuteKey(epoch, route));
     await store.sRem(minuteRoutesKey(epoch), route);
   }
 
@@ -244,11 +246,13 @@ export const flushOldMetrics = async (
         continue;
       }
 
-      // Cross-instance lock: only one process may read/delete this minute's
-      // buckets. The hash deletion still happens after the Mongo writes, so a
-      // failed write leaves the data available for the next attempt.
+      // Cross-instance lock: only one process may flush this minute. Each
+      // route hash is removed atomically before the Mongo writes, so a crash
+      // loses the bucket instead of replaying it. The token prevents a stale
+      // holder from deleting a lock acquired after expiry.
       const lockKey = `metrics:flush:${epoch}`;
-      const locked = await store.setNx(lockKey, "1", 60);
+      const lockToken = randomUUID();
+      const locked = await store.setNx(lockKey, lockToken, 60);
 
       if (!locked) {
         continue;
@@ -257,7 +261,7 @@ export const flushOldMetrics = async (
       try {
         await flushOneMinute(epoch);
       } finally {
-        await store.del(lockKey);
+        await store.delIfEquals(lockKey, lockToken).catch(() => {});
       }
     }
   } catch (error) {
@@ -290,7 +294,10 @@ const recordErrorLog = async (
           ? res.locals.errorCode
           : null,
       requestId: getRequestContext()?.requestId ?? null,
-      message: "Internal server error",
+      message:
+        typeof res.locals.errorMessage === "string"
+          ? res.locals.errorMessage
+          : "Internal server error",
       expireAt: new Date(Date.now() + ERROR_TTL_MS),
     });
   } catch (error) {

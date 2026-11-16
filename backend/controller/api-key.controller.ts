@@ -102,7 +102,11 @@ export const externalShortenController = async (
   } catch (error) {
     if (error instanceof ShortCodeExhaustedError) {
       markRequestMetric(res, "shortCodeExhausted");
-      setMetricErrorCode(res, "short_code_exhausted");
+      setMetricErrorCode(
+        res,
+        "short_code_exhausted",
+        "Unable to generate a short code right now. Please try again."
+      );
 
       return res.status(error.statusCode).json({
         success: false,
@@ -111,8 +115,10 @@ export const externalShortenController = async (
     }
 
     const isPublic = error instanceof PublicError;
+    const message = getPublicErrorMessage(error, "Unable to shorten URL");
 
     if (!isPublic) {
+      setMetricErrorCode(res, "request_error", "Unable to shorten URL");
       logError("request_error", error, {
         errorCode: "request_error",
         operation: "externalShortenController",
@@ -121,10 +127,7 @@ export const externalShortenController = async (
 
     return res.status(isPublic ? 400 : 500).json({
       success: false,
-      message: getPublicErrorMessage(
-        error,
-        "Unable to shorten URL"
-      ),
+      message,
     });
   }
 };
@@ -163,8 +166,20 @@ export const readApiKeyUsage = async (
         : 500;
 
     const isPublic = error instanceof PublicError;
+    const message = getPublicErrorMessage(
+      error,
+      "Unable to read usage stats"
+    );
 
     if (!isPublic) {
+      if (statusCode >= 500) {
+        setMetricErrorCode(
+          res,
+          "request_error",
+          "Unable to read usage stats"
+        );
+      }
+
       logError("request_error", error, {
         errorCode: "request_error",
         operation: "readApiKeyUsage",
@@ -173,10 +188,7 @@ export const readApiKeyUsage = async (
 
     return res.status(statusCode).json({
       success: false,
-      message: getPublicErrorMessage(
-        error,
-        "Unable to read usage stats"
-      ),
+      message,
     });
   }
 };

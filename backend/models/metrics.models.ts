@@ -24,7 +24,6 @@ export interface IMetricRollup extends Document {
   minMs: number;
   maxMs: number;
   errorCount: number;
-  botBlocks: number;
   authFailures: number;
   /**
    * Sparse by design: written only when short-code generation exhausts its
@@ -58,7 +57,6 @@ const metricFields = {
   minMs: { type: Number, default: 0, min: 0 },
   maxMs: { type: Number, default: 0, min: 0 },
   errorCount: { type: Number, default: 0, min: 0 },
-  botBlocks: { type: Number, default: 0, min: 0 },
   authFailures: { type: Number, default: 0, min: 0 },
   shortCodeExhausted: { type: Number, default: 0, min: 0 },
   eventLoopLagP99Ms: { type: Number, default: 0, min: 0 },
@@ -151,6 +149,8 @@ const errorLogSchema = new Schema<IErrorLog>(
   },
   { timestamps: true, versionKey: false }
 );
+
+errorLogSchema.index({ at: -1 });
 
 export const ErrorLog: mongoose.Model<IErrorLog> =
   (mongoose.models.ErrorLog as mongoose.Model<IErrorLog>) ??

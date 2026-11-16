@@ -1,7 +1,7 @@
 import type { Redis } from "@upstash/redis";
 import { env } from "../src/config/env.js";
 import { getUpstashRedis } from "../lib/redis.js";
-import { logInfo } from "./logger.js";
+import { logInfo, logWarn } from "./logger.js";
 
 /**
  * Small cache-store contract shared by the Upstash implementation and the
@@ -19,7 +19,14 @@ export interface CacheStore {
   get(key: string): Promise<string | null>;
   set(key: string, value: string, ttlSeconds?: number): Promise<void>;
   del(key: string): Promise<void>;
+  delIfEquals(key: string, value: string): Promise<boolean>;
   incrBy(key: string, delta: number, ttlSeconds?: number): Promise<number>;
+  incrByWithTtl(
+    key: string,
+    delta: number,
+    ttlSeconds: number
+  ): Promise<{ count: number; ttlMs: number }>;
+  decrByIfExists(key: string, delta: number): Promise<number | null>;
   expire(key: string, ttlSeconds: number): Promise<void>;
   hGetAll(key: string): Promise<Record<string, string>>;
   getHashAndDelete(key: string): Promise<Record<string, string>>;
@@ -51,8 +58,15 @@ const prefixed = (key: string): string => `${KEY_PREFIX}${key}`;
  * HGETALL may arrive as a flat [field, value, ...] array (automatic
  * deserialization is disabled) or as a plain object from newer client paths.
  */
-const normalizeHash = (raw: unknown): Record<string, string> => {
+export const normalizeHash = (raw: unknown): Record<string, string> => {
   if (Array.isArray(raw)) {
+    if (raw.length % 2 !== 0) {
+      logWarn("cache_hash_shape_unexpected", {
+        errorCode: "cache_hash_shape",
+        shape: "odd_array",
+      });
+    }
+
     const result: Record<string, string> = {};
 
     for (let index = 0; index < raw.length; index += 2) {
@@ -61,6 +75,11 @@ const normalizeHash = (raw: unknown): Record<string, string> => {
 
       if (typeof field === "string" && typeof value === "string") {
         result[field] = value;
+      } else {
+        logWarn("cache_hash_shape_unexpected", {
+          errorCode: "cache_hash_shape",
+          shape: "malformed_pair",
+        });
       }
     }
 
@@ -73,6 +92,13 @@ const normalizeHash = (raw: unknown): Record<string, string> => {
         ([field, value]) => [field, String(value)]
       )
     );
+  }
+
+  if (raw !== null && raw !== undefined) {
+    logWarn("cache_hash_shape_unexpected", {
+      errorCode: "cache_hash_shape",
+      shape: typeof raw,
+    });
   }
 
   return {};
@@ -128,6 +154,18 @@ export class MemoryCacheStore implements CacheStore {
     this.entries.delete(prefixed(key));
   }
 
+  async delIfEquals(key: string, value: string): Promise<boolean> {
+    const entry = this.getEntry(key);
+
+    if (!entry || entry.value !== value) {
+      return false;
+    }
+
+    this.entries.delete(prefixed(key));
+
+    return true;
+  }
+
   async incrBy(
     key: string,
     delta: number,
@@ -140,9 +178,63 @@ export class MemoryCacheStore implements CacheStore {
 
     if (entry) {
       entry.value = String(next);
+
+      if (ttlSeconds !== undefined && entry.expiresAt === null) {
+        entry.expiresAt = Date.now() + ttlSeconds * 1000;
+      }
     } else {
       this.setEntry(key, String(next), ttlSeconds);
     }
+
+    return next;
+  }
+
+  async incrByWithTtl(
+    key: string,
+    delta: number,
+    ttlSeconds: number
+  ): Promise<{ count: number; ttlMs: number }> {
+    const entry = this.getEntry(key);
+    const current =
+      typeof entry?.value === "string" ? Number(entry.value) : 0;
+    const count = (Number.isFinite(current) ? current : 0) + delta;
+    const now = Date.now();
+
+    if (entry) {
+      entry.value = String(count);
+
+      if (entry.expiresAt === null) {
+        entry.expiresAt = now + ttlSeconds * 1000;
+      }
+    } else {
+      this.setEntry(key, String(count), ttlSeconds);
+    }
+
+    const expiresAt = this.getEntry(key)?.expiresAt ?? null;
+
+    return {
+      count,
+      ttlMs:
+        expiresAt === null
+          ? ttlSeconds * 1000
+          : Math.max(0, expiresAt - now),
+    };
+  }
+
+  async decrByIfExists(
+    key: string,
+    delta: number
+  ): Promise<number | null> {
+    const entry = this.getEntry(key);
+
+    if (typeof entry?.value !== "string") {
+      return null;
+    }
+
+    const current = Number(entry.value);
+    const next = (Number.isFinite(current) ? current : 0) - delta;
+
+    entry.value = String(next);
 
     return next;
   }
@@ -332,6 +424,17 @@ class UpstashCacheStore implements CacheStore {
     await this.client.del(prefixed(key));
   }
 
+  async delIfEquals(key: string, value: string): Promise<boolean> {
+    const result = await this.client.eval(
+      "if redis.call('GET', KEYS[1]) == ARGV[1] then " +
+        "return redis.call('DEL', KEYS[1]) else return 0 end",
+      [prefixed(key)],
+      [value]
+    );
+
+    return Number(result) === 1;
+  }
+
   async incrBy(
     key: string,
     delta: number,
@@ -350,6 +453,52 @@ class UpstashCacheStore implements CacheStore {
     );
 
     return Number(value);
+  }
+
+  async incrByWithTtl(
+    key: string,
+    delta: number,
+    ttlSeconds: number
+  ): Promise<{ count: number; ttlMs: number }> {
+    const raw = await this.client.eval(
+      "local v = redis.call('INCRBY', KEYS[1], ARGV[1]); " +
+        "local ttl = redis.call('PTTL', KEYS[1]); " +
+        "if ttl < 0 then " +
+        "redis.call('EXPIRE', KEYS[1], ARGV[2]); " +
+        "ttl = tonumber(ARGV[2]) * 1000 end; " +
+        "return {v, ttl}",
+      [prefixed(key)],
+      [String(delta), String(ttlSeconds)]
+    );
+
+    const tuple = Array.isArray(raw) ? raw : [];
+    const count = Number(tuple[0]);
+    const ttlMs = Number(tuple[1]);
+
+    return {
+      count: Number.isFinite(count) ? count : 0,
+      ttlMs: Number.isFinite(ttlMs) ? ttlMs : ttlSeconds * 1000,
+    };
+  }
+
+  async decrByIfExists(
+    key: string,
+    delta: number
+  ): Promise<number | null> {
+    const raw = await this.client.eval(
+      "if redis.call('EXISTS', KEYS[1]) == 1 then " +
+        "return redis.call('DECRBY', KEYS[1], ARGV[1]) else return nil end",
+      [prefixed(key)],
+      [String(delta)]
+    );
+
+    if (raw === null || raw === undefined) {
+      return null;
+    }
+
+    const value = Number(raw);
+
+    return Number.isFinite(value) ? value : null;
   }
 
   async expire(key: string, ttlSeconds: number): Promise<void> {

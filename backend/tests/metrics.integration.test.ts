@@ -32,6 +32,7 @@ const {
   flushMetricsForTests,
   getDashboardMetrics,
   recordRequestMetrics,
+  setMetricErrorCode,
 } = await import("../service/metrics.service.js");
 
 setCacheStoreForTests(new MemoryCacheStore());
@@ -39,6 +40,7 @@ setCacheStoreForTests(new MemoryCacheStore());
 const run = testMongoUri ? test : test.skip;
 const route = "/test-metrics";
 const failureRoute = "/test-short-code-exhausted";
+const idempotentRoute = "/test-idempotent";
 
 before(async () => {
   if (!testMongoUri) return;
@@ -50,15 +52,29 @@ after(async () => {
   if (!testMongoUri) return;
 
   await Promise.all([
-    MetricsMinute.deleteMany({ route: { $in: [route, failureRoute] } }),
+    MetricsMinute.deleteMany({
+      route: { $in: [route, failureRoute, idempotentRoute] },
+    }),
     MetricsHour.deleteMany({
       route: {
-        $in: [route, failureRoute, "/api/v1/urls", "/:code"],
+        $in: [
+          route,
+          failureRoute,
+          idempotentRoute,
+          "/api/v1/urls",
+          "/:code",
+        ],
       },
     }),
-    MetricsDaily.deleteMany({ route: { $in: [route, failureRoute] } }),
-    MetricsMonthly.deleteMany({ route: { $in: [route, failureRoute] } }),
-    ErrorLog.deleteMany({ route: { $in: [route, failureRoute] } }),
+    MetricsDaily.deleteMany({
+      route: { $in: [route, failureRoute, idempotentRoute] },
+    }),
+    MetricsMonthly.deleteMany({
+      route: { $in: [route, failureRoute, idempotentRoute] },
+    }),
+    ErrorLog.deleteMany({
+      route: { $in: [route, failureRoute, idempotentRoute] },
+    }),
   ]);
   await mongoose.disconnect();
 });
@@ -75,6 +91,7 @@ const fakeResponse = (statusCode: number) =>
     locals: {
       metrics: emptyRequestMetrics(),
       errorCode: statusCode >= 500 ? "test_error" : undefined,
+      errorMessage: statusCode >= 500 ? "Test failure" : undefined,
     },
   }) as any;
 
@@ -106,13 +123,44 @@ run("buffers a request minute and flushes rollups to Mongo", async () => {
 });
 
 run("writes an ErrorLog for 5xx responses", async () => {
-  await recordRequestMetrics(fakeRequest(), fakeResponse(500), 5);
+  const res = fakeResponse(500);
+
+  setMetricErrorCode(
+    res,
+    "database_unavailable",
+    "Database is unavailable, please try again later"
+  );
+
+  await recordRequestMetrics(fakeRequest(), res, 5);
 
   const error = await ErrorLog.findOne({ route }).lean();
 
   assert.equal(error?.status, 500);
-  assert.equal(error?.errorCode, "test_error");
+  assert.equal(error?.errorCode, "database_unavailable");
+  assert.equal(
+    error?.message,
+    "Database is unavailable, please try again later"
+  );
   assert.ok(error?.expireAt instanceof Date);
+});
+
+run("flushes a minute bucket exactly once", async () => {
+  await recordRequestMetrics(
+    { baseUrl: idempotentRoute, route: { path: "" } } as any,
+    fakeResponse(200),
+    3
+  );
+
+  const minute = Math.floor(Date.now() / 60_000);
+
+  await flushMetricsForTests(minute);
+  await flushMetricsForTests(minute);
+
+  const doc = await MetricsMinute.findOne({
+    route: idempotentRoute,
+  }).lean();
+
+  assert.equal(doc?.requests, 1);
 });
 
 run("counts short-code exhaustion and records its error code", async () => {
@@ -168,6 +216,12 @@ run("declares the expected TTL indexes", async () => {
   ttl(hourIndexes, "expireAt_1");
   ttl(errorIndexes, "expireAt_1");
   ttl(sessionIndexes, "expiresAt_1");
+
+  assert.ok(
+    errorIndexes.some(
+      (entry) => entry.name === "at_-1" && entry.key?.at === -1
+    )
+  );
 
   assert.equal(
     dailyIndexes.some((entry) => entry.name === "expireAt_1"),

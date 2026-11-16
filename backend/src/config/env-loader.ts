@@ -93,6 +93,20 @@ export const loadEnv = (
   }
 
   /*
+   * A Vercel production deployment must declare its environment explicitly.
+   * Otherwise a forgotten NODE_ENV would silently boot production as
+   * development.
+   */
+  if (
+    !source.NODE_ENV?.trim() &&
+    source.VERCEL_ENV?.trim().toLowerCase() === "production"
+  ) {
+    throw new Error(
+      "NODE_ENV must be set to production when VERCEL_ENV=production"
+    );
+  }
+
+  /*
    * Node deployments conventionally use the lowercase value `production`
    * (Vercel, for example), so normalise before comparing. Unknown names are
    * rejected instead of silently behaving like development.

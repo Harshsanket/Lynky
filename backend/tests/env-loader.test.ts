@@ -223,6 +223,33 @@ test("rejects a code length beyond the generator's entropy", () => {
   );
 });
 
+test("rejects Vercel production without NODE_ENV", () => {
+  assert.throws(
+    () =>
+      loadEnv({
+        ...baseEnv,
+        ...upstashEnv,
+        VERCEL_ENV: "production",
+        FRONTEND_URL: "https://lynky.example",
+      }),
+    /NODE_ENV must be set to production when VERCEL_ENV=production/
+  );
+});
+
+test("rejects stage timings in production", () => {
+  assert.throws(
+    () =>
+      loadEnv({
+        ...baseEnv,
+        ...upstashEnv,
+        NODE_ENV: "production",
+        FRONTEND_URL: "https://lynky.example",
+        SERVER_STAGE_TIMINGS: "1",
+      }),
+    /SERVER_STAGE_TIMINGS is development-only/
+  );
+});
+
 test("allows full runtime validation only outside production", () => {
   const development = loadEnv({
     ...baseEnv,

@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import { connectDatabase } from "../database/index.database.js";
 import { logError } from "../service/logger.js";
+import { setMetricErrorCode } from "../service/metrics.service.js";
 
 /**
  * Ensures a MongoDB connection exists before the route handler runs.
@@ -16,6 +17,11 @@ export const databaseConnectionMiddleware = async (
 
     next();
   } catch (error) {
+    setMetricErrorCode(
+      res,
+      "database_unavailable",
+      "Database is unavailable, please try again later"
+    );
     logError("request_error", error, {
       errorCode: "database_unavailable",
       operation: "databaseConnectionMiddleware",

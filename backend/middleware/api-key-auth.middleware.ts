@@ -7,6 +7,7 @@ import {
 } from "../service/api-key.service.js";
 import { extractBearerSecret } from "../src/utils/http.js";
 import { logError } from "../service/logger.js";
+import { setMetricErrorCode } from "../service/metrics.service.js";
 
 declare global {
   namespace Express {
@@ -62,6 +63,11 @@ export const createApiKeyAuthMiddleware = (
         });
       }
 
+      setMetricErrorCode(
+        res,
+        "request_error",
+        "Internal server error"
+      );
       logError("request_error", error, {
         errorCode: "request_error",
         operation: "apiKeyAuthMiddleware",
