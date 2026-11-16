@@ -4,14 +4,17 @@ export interface TrackerGroupArtifact {
   exact: string[];
   prefixes: string[];
   patterns: string[];
+  pairExact: string[];
+  pairPatterns: string[];
   exceptions: string[];
+  excludeHosts: string[];
 }
 
 export interface TrackersArtifact {
   schemaVersion: number;
   groups: {
     lynky: TrackerGroupArtifact;
-    clearurlsGlobal: TrackerGroupArtifact;
+    external: TrackerGroupArtifact;
   };
 }
 
@@ -27,6 +30,8 @@ export interface CompiledProviderArtifact {
   hostHints: string[];
   completeProvider: boolean;
   rules: RuleBucketsArtifact;
+  pairExact: string[];
+  pairPatterns: string[];
   referralMarketing: RuleBucketsArtifact;
   exceptions: string[];
   redirections: string[];
@@ -42,6 +47,7 @@ export interface AllowlistArtifact {
   schemaVersion: number;
   global: string[];
   domains: Record<string, string[]>;
+  exceptions: Record<string, string[]>;
 }
 
 export interface PolicyArtifact {

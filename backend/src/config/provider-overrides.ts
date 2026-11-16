@@ -86,6 +86,7 @@ export const applyProviderOverrides = (
     ...provider,
     hostHints: [...provider.hostHints],
     rules: [...provider.rules],
+    pairPatterns: [...provider.pairPatterns],
     referralMarketing: [...provider.referralMarketing],
     exceptions: [...provider.exceptions],
     redirections: [...provider.redirections],
@@ -135,6 +136,7 @@ export const applyProviderOverrides = (
         ...override.providerDefinition,
         hostHints: [...override.providerDefinition.hostHints],
         rules: [...override.providerDefinition.rules],
+        pairPatterns: [...override.providerDefinition.pairPatterns],
         referralMarketing: [
           ...override.providerDefinition.referralMarketing,
         ],

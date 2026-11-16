@@ -111,8 +111,16 @@ export class CleanerOrchestrator {
     );
   }
 
-  private isTrackingKey(key: string, urlString?: string): boolean {
-    if (this.trackers.matches(key, urlString)) {
+  private isTrackingKey(
+    key: string,
+    value: string,
+    context: ReturnType<TrackerEngine["prepare"]>
+  ): boolean {
+    if (this.trackers.matches(key, context)) {
+      return true;
+    }
+
+    if (this.trackers.matchesPair(key, value, context)) {
       return true;
     }
 
@@ -122,7 +130,7 @@ export class CleanerOrchestrator {
 
     return decodeVariants(key).some(
       (variant) =>
-        variant !== key && this.trackers.matches(variant, urlString)
+        variant !== key && this.trackers.matches(variant, context)
     );
   }
 
@@ -266,6 +274,10 @@ export class CleanerOrchestrator {
     }
 
     const normalizedUrlString = url.toString();
+    const trackerContext = this.trackers.prepare(
+      normalizedUrlString,
+      url.hostname
+    );
     const matchingProviders = this.providers.match(
       normalizedUrlString,
       url.hostname
@@ -291,6 +303,7 @@ export class CleanerOrchestrator {
     }
 
     const allowlist = this.allowlist.forHost(url.hostname);
+    const protectAll = this.allowlist.protectsAll(url.hostname);
 
     /*
      * Provider contract:
@@ -313,24 +326,27 @@ export class CleanerOrchestrator {
 
       if (provider.artifact.completeProvider) {
         for (const key of [...url.searchParams.keys()]) {
-          if (!allowlist.has(key)) {
+          if (!protectAll && !allowlist.has(key)) {
             url.searchParams.delete(key);
           }
         }
       } else {
-        for (const key of [...url.searchParams.keys()]) {
-          if (allowlist.has(key)) {
+        for (const [key, value] of [...url.searchParams.entries()]) {
+          if (protectAll || allowlist.has(key)) {
             continue;
           }
 
-          if (provider.rules.matches(key)) {
+          if (
+            provider.rules.matches(key) ||
+            provider.pairRules.matches(key, value)
+          ) {
             url.searchParams.delete(key);
           }
         }
       }
 
       for (const key of [...url.searchParams.keys()]) {
-        if (allowlist.has(key)) {
+        if (protectAll || allowlist.has(key)) {
           continue;
         }
 
@@ -354,12 +370,12 @@ export class CleanerOrchestrator {
       }
     }
 
-    for (const key of [...url.searchParams.keys()]) {
-      if (allowlist.has(key)) {
+    for (const [key, value] of [...url.searchParams.entries()]) {
+      if (protectAll || allowlist.has(key)) {
         continue;
       }
 
-      if (this.isTrackingKey(key, normalizedUrlString)) {
+      if (this.isTrackingKey(key, value, trackerContext)) {
         url.searchParams.delete(key);
       }
     }

@@ -79,7 +79,7 @@ test("loads artifacts and matches blocklist hosts", () => {
 
   assert.equal(artifacts.manifest.artifactVersion, result.manifest.artifactVersion);
   assert.equal(artifacts.artifactHashValid, true);
-  assert.equal(artifacts.manifest.counts.providers, 1);
+  assert.equal(artifacts.manifest.counts.providers, 2);
 
   assert.equal(
     blocklist.check(new URL("https://blocked.example/path")).blocked,

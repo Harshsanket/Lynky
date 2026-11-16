@@ -1,0 +1,2 @@
+! fixture allowlist
+@@||fixture.example^$removeparam=keep_me

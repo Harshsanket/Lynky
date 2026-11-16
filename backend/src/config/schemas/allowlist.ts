@@ -10,6 +10,9 @@ export const allowlistSchema = z
     schemaVersion: z.literal(CONFIG_SCHEMA_VERSION),
     global: z.array(nonEmptyString).default([]),
     domains: z.record(hostnameSchema, z.array(nonEmptyString)).default({}),
+    exceptions: z
+      .record(hostnameSchema, z.array(nonEmptyString))
+      .default({}),
   })
   .loose();
 

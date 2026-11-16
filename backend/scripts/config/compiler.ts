@@ -17,6 +17,10 @@ import {
 import { isValidHostHint } from "../../src/config/hostname.js";
 import type { Manifest } from "../../src/config/schemas/manifest.js";
 import type { Provider } from "../../src/config/schemas/providers.js";
+import {
+  splitPairPatterns,
+  type SplitPairPatterns,
+} from "../../src/config/pair-patterns.js";
 import { buildMphf, buildSortedHashes } from "./mphf.js";
 
 export interface CompileOptions {
@@ -50,6 +54,9 @@ const JSON_INDENT = 2;
 
 const stableJson = (value: unknown): string =>
   `${JSON.stringify(value, null, JSON_INDENT)}\n`;
+
+const machineJson = (value: unknown): string =>
+  `${JSON.stringify(value)}\n`;
 
 const sortStrings = (values: readonly string[]): string[] =>
   [...new Set(values)].sort();
@@ -170,6 +177,7 @@ const compileProvider = (provider: Provider): CompiledProvider => {
     provider.hostHints.length > 0
       ? sortStrings(provider.hostHints)
       : extractHostHints(provider.urlPattern);
+  const pairs = splitPairPatterns(provider.pairPatterns);
 
   return {
     id: provider.id,
@@ -177,6 +185,8 @@ const compileProvider = (provider: Provider): CompiledProvider => {
     hostHints,
     completeProvider: provider.completeProvider,
     rules: classifyRules(provider.rules),
+    pairExact: pairs.pairExact,
+    pairPatterns: pairs.pairPatterns,
     referralMarketing: classifyRules(provider.referralMarketing),
     exceptions: sortStrings(provider.exceptions),
     redirections: sortStrings(provider.redirections),
@@ -190,32 +200,44 @@ interface CompiledProvider {
   hostHints: string[];
   completeProvider: boolean;
   rules: RuleBuckets;
+  pairExact: string[];
+  pairPatterns: string[];
   referralMarketing: RuleBuckets;
   exceptions: string[];
   redirections: string[];
   rawRules: string[];
 }
 
-interface TrackerGroup {
+interface TrackerGroup extends SplitPairPatterns {
   exact: string[];
   prefixes: string[];
   patterns: string[];
   exceptions: string[];
+  excludeHosts: string[];
 }
 
 const compileTrackerGroup = (dataset: {
   exact: readonly string[];
   prefixes: readonly string[];
   patterns: readonly string[];
+  pairPatterns: readonly string[];
   exceptions: readonly string[];
-}): TrackerGroup => ({
-  exact: sortStrings(dataset.exact.map((value) => value.toLowerCase())),
-  prefixes: sortStrings(
-    dataset.prefixes.map((value) => value.toLowerCase())
-  ),
-  patterns: sortStrings(dataset.patterns),
-  exceptions: sortStrings(dataset.exceptions),
-});
+  excludeHosts: readonly string[];
+}): TrackerGroup => {
+  const pairs = splitPairPatterns(dataset.pairPatterns);
+
+  return {
+    exact: sortStrings(dataset.exact.map((value) => value.toLowerCase())),
+    prefixes: sortStrings(
+      dataset.prefixes.map((value) => value.toLowerCase())
+    ),
+    patterns: sortStrings(dataset.patterns),
+    pairExact: pairs.pairExact,
+    pairPatterns: pairs.pairPatterns,
+    exceptions: sortStrings(dataset.exceptions),
+    excludeHosts: sortStrings(dataset.excludeHosts),
+  };
+};
 
 const writeFile = (filePath: string, content: string | Buffer): void => {
   fs.writeFileSync(filePath, content);
@@ -292,19 +314,56 @@ interface SourceFileEntry {
   license?: string;
 }
 
+const manifestSourceFiles = (
+  manifestPath: string,
+  prefix: string
+): SourceFileEntry[] => {
+  const manifest = JSON.parse(
+    fs.readFileSync(manifestPath, "utf-8")
+  ) as {
+    sources?: Array<{
+      file?: unknown;
+      format?: unknown;
+      sourceUrl?: unknown;
+      license?: unknown;
+    }>;
+  };
+
+  if (!Array.isArray(manifest.sources)) {
+    return [];
+  }
+
+  return manifest.sources.flatMap((source) => {
+    if (typeof source.file !== "string") {
+      return [];
+    }
+
+    return [
+      {
+        file: `${prefix}/${source.file}`,
+        ...(typeof source.format === "string"
+          ? { format: source.format }
+          : {}),
+        ...(typeof source.sourceUrl === "string"
+          ? { sourceUrl: source.sourceUrl }
+          : {}),
+        ...(typeof source.license === "string"
+          ? { license: source.license }
+          : {}),
+      },
+    ];
+  });
+};
+
 const sourceFiles = (
   config: ValidatedConfig
 ): SourceFileEntry[] => {
   const files: SourceFileEntry[] = [
-    { file: "trackers/generic/lynky.json" },
-    { file: "trackers/generic/clearurls-global.json" },
-    { file: "trackers/providers/clearurls.json" },
-    { file: "trackers/providers/overrides.json" },
-    { file: "trackers/providers/upstream/data.min.json" },
-    { file: "trackers/providers/upstream/version.json" },
-    { file: "policies/allowlist.json" },
-    { file: "policies/cleaner.json" },
+    { file: "trackers/sources.json" },
+    { file: "policies/sources.json" },
     { file: "blocklists/sources.json" },
+    ...manifestSourceFiles(config.paths.trackerSources, "trackers"),
+    ...manifestSourceFiles(config.paths.policySources, "policies"),
   ];
 
   for (const source of config.blocklists.sources) {
@@ -356,10 +415,13 @@ const countRules = (
     config.lynky.exact.length +
     config.lynky.prefixes.length +
     config.lynky.patterns.length +
-    config.clearurlsGlobal.exact.length +
-    config.clearurlsGlobal.prefixes.length +
-    config.clearurlsGlobal.patterns.length +
-    config.clearurlsGlobal.exceptions.length;
+    config.lynky.pairPatterns.length +
+    config.lynky.exceptions.length +
+    config.external.exact.length +
+    config.external.prefixes.length +
+    config.external.patterns.length +
+    config.external.pairPatterns.length +
+    config.external.exceptions.length;
 
   for (const provider of providers) {
     count +=
@@ -422,7 +484,7 @@ export const compileConfig = (
     schemaVersion: ARTIFACT_SCHEMA_VERSION,
     groups: {
       lynky: compileTrackerGroup(config.lynky),
-      clearurlsGlobal: compileTrackerGroup(config.clearurlsGlobal),
+      external: compileTrackerGroup(config.external),
     },
   };
   const providersArtifact = {
@@ -437,6 +499,11 @@ export const compileConfig = (
         .sort(([left], [right]) => left.localeCompare(right))
         .map(([domain, values]) => [domain, sortStrings(values)])
     ),
+    exceptions: Object.fromEntries(
+      Object.entries(config.allowlist.exceptions)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([domain, values]) => [domain, sortStrings(values)])
+    ),
   };
   const policy = {
     schemaVersion: ARTIFACT_SCHEMA_VERSION,
@@ -448,10 +515,31 @@ export const compileConfig = (
     removeJunkFragments: config.policy.removeJunkFragments,
   };
 
-  writeFile(path.join(outDir, "trackers.json"), stableJson(trackers));
-  writeFile(path.join(outDir, "providers.json"), stableJson(providersArtifact));
-  writeFile(path.join(outDir, "allowlist.json"), stableJson(allowlist));
-  writeFile(path.join(outDir, "policy.json"), stableJson(policy));
+  writeFile(path.join(outDir, "trackers.json"), machineJson(trackers));
+  writeFile(path.join(outDir, "providers.json"), machineJson(providersArtifact));
+  writeFile(path.join(outDir, "allowlist.json"), machineJson(allowlist));
+  writeFile(path.join(outDir, "policy.json"), machineJson(policy));
+  const genericPairs = splitPairPatterns([
+    ...config.lynky.pairPatterns,
+    ...config.external.pairPatterns,
+  ]);
+  const providerPairs = splitPairPatterns(
+    config.providers.flatMap((provider) => provider.pairPatterns)
+  );
+
+  writeFile(
+    path.join(outDir, "report.json"),
+    stableJson({
+      ...config.trackerReport,
+      counts: {
+        ...config.trackerReport.counts,
+        genericPairExact: genericPairs.pairExact.length,
+        genericPairRegex: genericPairs.pairPatterns.length,
+        providerPairExact: providerPairs.pairExact.length,
+        providerPairRegex: providerPairs.pairPatterns.length,
+      },
+    })
+  );
 
   const blocklistIndexKind =
     options.indexKind ??

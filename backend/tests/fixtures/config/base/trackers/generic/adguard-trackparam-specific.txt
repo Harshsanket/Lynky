@@ -1,0 +1,3 @@
+! fixture specific
+||fixture.example^$removeparam=host_tracker
+||fixture.example^$removeparam=/^ref=kelkoo$/

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "sources": [
+    {
+      "file": "allowlist.json",
+      "format": "policies-json",
+      "required": true,
+      "minEntries": 0
+    },
+    {
+      "file": "cleaner.json",
+      "format": "policies-json",
+      "required": true,
+      "minEntries": 1
+    }
+  ]
+}

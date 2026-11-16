@@ -39,10 +39,46 @@ export class RuleBucket {
   }
 }
 
+export class PairRuleBucket {
+  private readonly exact: Set<string>;
+  private readonly sources: readonly string[];
+  private regex: readonly RegExp[] | null = null;
+
+  constructor(exact: readonly string[], patterns: readonly string[]) {
+    this.exact = new Set(exact);
+    this.sources = patterns;
+  }
+
+  private patterns(): readonly RegExp[] {
+    if (this.regex === null) {
+      this.regex = this.sources.map(
+        (source) => new RegExp(source, "i")
+      );
+    }
+
+    return this.regex;
+  }
+
+  matches(key: string, value: string): boolean {
+    const pair = `${key}=${value}`.toLowerCase();
+
+    if (this.exact.has(pair)) {
+      return true;
+    }
+
+    if (this.sources.length === 0) {
+      return false;
+    }
+
+    return this.patterns().some((pattern) => pattern.test(pair));
+  }
+}
+
 export interface RuntimeProvider {
   artifact: CompiledProviderArtifact;
   urlPattern: RegExp;
   rules: RuleBucket;
+  pairRules: PairRuleBucket;
   referralMarketing: RuleBucket;
   exceptions: readonly RegExp[];
   redirections: readonly RegExp[];
@@ -78,34 +114,25 @@ const candidateKeys = (hostname: string): string[] => {
  * original `urlPattern` regex before it can affect cleaning.
  */
 export class ProviderEngine {
-  readonly providers: readonly RuntimeProvider[];
+  private readonly artifacts: readonly CompiledProviderArtifact[];
+  private readonly runtime: Array<RuntimeProvider | null>;
   private readonly hostIndex = new Map<string, number[]>();
   private readonly fallback: number[] = [];
+  private readonly candidateMarks: number[];
+  private candidateGeneration = 0;
 
   constructor(artifact: ProvidersArtifact) {
-    this.providers = artifact.providers.map((provider) => ({
-      artifact: provider,
-      urlPattern: new RegExp(provider.urlPattern, "i"),
-      rules: new RuleBucket(provider.rules),
-      referralMarketing: new RuleBucket(provider.referralMarketing),
-      exceptions: provider.exceptions.map(
-        (pattern) => new RegExp(pattern, "i")
-      ),
-      redirections: provider.redirections.map(
-        (pattern) => new RegExp(pattern, "i")
-      ),
-      rawRules: provider.rawRules.map(
-        (pattern) => new RegExp(pattern, "gi")
-      ),
-    }));
+    this.artifacts = artifact.providers;
+    this.runtime = new Array(artifact.providers.length).fill(null);
+    this.candidateMarks = new Array(artifact.providers.length).fill(0);
 
-    this.providers.forEach((provider, index) => {
-      if (provider.artifact.hostHints.length === 0) {
+    this.artifacts.forEach((provider, index) => {
+      if (provider.hostHints.length === 0) {
         this.fallback.push(index);
         return;
       }
 
-      for (const hint of provider.artifact.hostHints) {
+      for (const hint of provider.hostHints) {
         const bucket = this.hostIndex.get(hint);
 
         if (bucket) {
@@ -117,20 +144,73 @@ export class ProviderEngine {
     });
   }
 
+  /** Compatibility view; builds all providers only if explicitly accessed. */
+  get providers(): readonly RuntimeProvider[] {
+    return this.artifacts.map((_provider, index) =>
+      this.runtimeProvider(index)
+    );
+  }
+
+  private runtimeProvider(index: number): RuntimeProvider {
+    const cached = this.runtime[index];
+
+    if (cached) {
+      return cached;
+    }
+
+    const provider = this.artifacts[index]!;
+    const runtime: RuntimeProvider = {
+      artifact: provider,
+      urlPattern: new RegExp(provider.urlPattern, "i"),
+      rules: new RuleBucket(provider.rules),
+      pairRules: new PairRuleBucket(
+        provider.pairExact,
+        provider.pairPatterns
+      ),
+      referralMarketing: new RuleBucket(provider.referralMarketing),
+      exceptions: provider.exceptions.map(
+        (pattern) => new RegExp(pattern, "i")
+      ),
+      redirections: provider.redirections.map(
+        (pattern) => new RegExp(pattern, "i")
+      ),
+      rawRules: provider.rawRules.map(
+        (pattern) => new RegExp(pattern, "gi")
+      ),
+    };
+
+    this.runtime[index] = runtime;
+
+    return runtime;
+  }
+
   candidatesFor(hostname: string): number[] {
-    const indices = new Set<number>(this.fallback);
+    const generation = ++this.candidateGeneration;
+    const indices: number[] = [];
+    const mark = (index: number): void => {
+      if (this.candidateMarks[index] === generation) {
+        return;
+      }
+
+      this.candidateMarks[index] = generation;
+      indices.push(index);
+    };
+
+    for (const index of this.fallback) {
+      mark(index);
+    }
 
     for (const key of candidateKeys(hostname)) {
       const bucket = this.hostIndex.get(key);
 
       if (bucket) {
         for (const index of bucket) {
-          indices.add(index);
+          mark(index);
         }
       }
     }
 
-    return [...indices].sort((left, right) => left - right);
+    return indices.sort((left, right) => left - right);
   }
 
   /** Matching providers, in original provider order. */
@@ -138,7 +218,7 @@ export class ProviderEngine {
     const matched: RuntimeProvider[] = [];
 
     for (const index of this.candidatesFor(hostname)) {
-      const provider = this.providers[index]!;
+      const provider = this.runtimeProvider(index);
 
       try {
         if (provider.urlPattern.test(urlString)) {

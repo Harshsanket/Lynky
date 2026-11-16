@@ -14,7 +14,7 @@ const { TrackerEngine } = await import(
 const { AllowlistEngine } = await import(
   "../service/engines/allowlist.engine.js"
 );
-const { ProviderEngine, RuleBucket } = await import(
+const { PairRuleBucket, ProviderEngine, RuleBucket } = await import(
   "../service/engines/provider.engine.js"
 );
 const { BlocklistEngine } = await import(
@@ -29,13 +29,19 @@ test("TrackerEngine uses exact, prefix, regex, and URL exceptions", () => {
       exact: ["fbclid"],
       prefixes: ["utm_"],
       patterns: ["^_ga(?:_|$)"],
+      pairExact: [],
+      pairPatterns: [],
       exceptions: [],
+      excludeHosts: [],
     },
-    clearurlsGlobal: {
+    external: {
       exact: [],
       prefixes: [],
       patterns: ["^(?:ref_?)$"],
+      pairExact: ["source=newsletter"],
+      pairPatterns: [],
       exceptions: ["^https?:\\/\\/github\\.com"],
+      excludeHosts: ["excluded.example"],
     },
   });
 
@@ -49,6 +55,12 @@ test("TrackerEngine uses exact, prefix, regex, and URL exceptions", () => {
   );
   assert.equal(engine.matches("ref", "https://example.com/"), true);
   assert.equal(engine.matches("unrelated"), false);
+  assert.equal(engine.matchesPair("source", "newsletter"), true);
+  assert.equal(engine.matchesPair("source", "other"), false);
+  assert.equal(
+    engine.matches("ref", "https://excluded.example/", "excluded.example"),
+    false
+  );
 });
 
 test("AllowlistEngine merges global and parent-domain parameters", () => {
@@ -59,6 +71,10 @@ test("AllowlistEngine merges global and parent-domain parameters", () => {
       "youtube.com": ["v"],
       "example.com": ["id"],
     },
+    exceptions: {
+      "shop.example": ["tag"],
+      "wild.example": ["*"],
+    },
   });
 
   const youtube = engine.forHost("www.youtube.com");
@@ -68,6 +84,11 @@ test("AllowlistEngine merges global and parent-domain parameters", () => {
 
   assert.equal(engine.isAllowed("sub.example.com", "id"), true);
   assert.equal(engine.isAllowed("example.com", "other"), false);
+  assert.equal(engine.isAllowed("shop.example", "tag"), true);
+  assert.equal(engine.isAllowed("sub.shop.example", "tag"), true);
+  assert.equal(engine.protectsAll("wild.example"), true);
+  assert.equal(engine.protectsAll("sub.wild.example"), true);
+  assert.equal(engine.protectsAll("example.com"), false);
 });
 
 test("RuleBucket matches literal, prefix, and regex rules", () => {
@@ -84,6 +105,18 @@ test("RuleBucket matches literal, prefix, and regex rules", () => {
   assert.equal(bucket.matches("other"), false);
 });
 
+test("PairRuleBucket matches value-conditioned pairs", () => {
+  const bucket = new PairRuleBucket(
+    ["ref=kelkoo"],
+    ["^source=.*$"]
+  );
+
+  assert.equal(bucket.matches("ref", "kelkoo"), true);
+  assert.equal(bucket.matches("ref", "other"), false);
+  assert.equal(bucket.matches("source", "newsletter"), true);
+  assert.equal(bucket.matches("other", "kelkoo"), false);
+});
+
 test("ProviderEngine prefilters by host but still verifies the regex and order", () => {
   const engine = new ProviderEngine({
     schemaVersion: 1,
@@ -94,6 +127,8 @@ test("ProviderEngine prefilters by host but still verifies the regex and order",
         hostHints: ["example.com"],
         completeProvider: false,
         rules: emptyBuckets,
+        pairExact: [],
+        pairPatterns: [],
         referralMarketing: emptyBuckets,
         exceptions: [],
         redirections: [],
@@ -105,6 +140,8 @@ test("ProviderEngine prefilters by host but still verifies the regex and order",
         hostHints: ["google"],
         completeProvider: false,
         rules: emptyBuckets,
+        pairExact: [],
+        pairPatterns: [],
         referralMarketing: emptyBuckets,
         exceptions: [],
         redirections: [],
@@ -116,6 +153,8 @@ test("ProviderEngine prefilters by host but still verifies the regex and order",
         hostHints: [],
         completeProvider: false,
         rules: emptyBuckets,
+        pairExact: [],
+        pairPatterns: [],
         referralMarketing: emptyBuckets,
         exceptions: [],
         redirections: [],
@@ -127,6 +166,8 @@ test("ProviderEngine prefilters by host but still verifies the regex and order",
         hostHints: ["never.example"],
         completeProvider: false,
         rules: emptyBuckets,
+        pairExact: [],
+        pairPatterns: [],
         referralMarketing: emptyBuckets,
         exceptions: [],
         redirections: [],

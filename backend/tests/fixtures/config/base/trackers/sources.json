@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "sources": [
+    { "file": "generic/lynky.json", "format": "tracker-json", "required": true, "minEntries": 1 },
+    { "file": "generic/adguard-trackparam-allowlist.txt", "format": "adguard-removeparam", "required": true, "minEntries": 1, "license": "GPL-3.0" },
+    { "file": "generic/adguard-trackparam-general-url.txt", "format": "adguard-removeparam", "required": true, "minEntries": 1, "license": "GPL-3.0" },
+    { "file": "generic/adguard-trackparam-specific.txt", "format": "adguard-removeparam", "required": true, "minEntries": 1, "license": "GPL-3.0" },
+    { "file": "generic/legitimate-url-shortener.txt", "format": "adguard-removeparam", "required": true, "minEntries": 1, "license": "NOASSERTION" },
+    { "file": "providers/clearurls.json", "format": "providers-json", "required": true, "minEntries": 1 },
+    { "file": "providers/overrides.json", "format": "overrides-json", "required": true, "minEntries": 0 },
+    { "file": "providers/upstream/data.min.json", "format": "clearurls-upstream", "required": true, "minEntries": 1 },
+    { "file": "providers/upstream/version.json", "format": "clearurls-version", "required": true, "minEntries": 0 }
+  ]
+}

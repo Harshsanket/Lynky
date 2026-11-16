@@ -97,3 +97,66 @@ test("validates short codes before database lookup", () => {
   assert.equal(isValidCode("a".repeat(65)), false);
   assert.equal(isValidCode("abc!"), false);
 });
+
+test("applies external generic, host-scoped, and pair rules", () => {
+  assert.equal(
+    cleanUrl("https://example.com/?24sata_ref=x&keep=1"),
+    "https://example.com/?keep=1"
+  );
+  assert.equal(
+    cleanUrl(
+      "https://flugladen.de/checkout/metalanding?subch=1&keep=2"
+    ),
+    "https://flugladen.de/checkout/metalanding?keep=2"
+  );
+  assert.equal(
+    cleanUrl("https://1800contacts.com/?partnerid=abc&keep=1"),
+    "https://1800contacts.com/?keep=1"
+  );
+  assert.equal(
+    cleanUrl("https://1800contacts.com/?other=abc&keep=1"),
+    "https://1800contacts.com/?other=abc&keep=1"
+  );
+});
+
+test("upstream allowlist exceptions win over generic removal", () => {
+  assert.equal(
+    cleanUrl("https://eneba.com/?utm_source=x&keep=1"),
+    "https://eneba.com/?utm_source=x&keep=1"
+  );
+  assert.equal(
+    cleanUrl("https://www.eneba.com/?utm_source=x&keep=1"),
+    "https://www.eneba.com/?utm_source=x&keep=1"
+  );
+  assert.equal(
+    cleanUrl("https://example.com/?utm_source=x&keep=1"),
+    "https://example.com/?keep=1"
+  );
+});
+
+test("cleaning an already-cleaned URL is a no-op", () => {
+  for (const input of [
+    "https://example.com/?24sata_ref=x&utm_source=y&keep=1",
+    "https://flugladen.de/checkout/metalanding?subch=1&keep=2",
+    "https://1800contacts.com/?partnerid=abc&keep=1",
+  ]) {
+    const once = cleanUrl(input);
+
+    assert.equal(cleanUrl(once), once);
+  }
+});
+
+test("fail-safe converted exceptions preserve params on the whole host", () => {
+  assert.equal(
+    cleanUrl(
+      "https://shopify.com/authentication/?analytics_trace_id=abc&keep=1"
+    ),
+    "https://shopify.com/authentication/?analytics_trace_id=abc&keep=1"
+  );
+  assert.equal(
+    cleanUrl(
+      "https://example.com/?analytics_trace_id=abc&keep=1"
+    ),
+    "https://example.com/?keep=1"
+  );
+});

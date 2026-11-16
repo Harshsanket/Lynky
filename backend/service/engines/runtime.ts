@@ -42,24 +42,36 @@ const createRuntime = (dir?: string): EngineRuntime => {
     artifacts.manifest,
     { verifyHash: !artifacts.artifactHashValid }
   );
-  const trackers = new TrackerEngine(artifacts.trackers.groups);
-  const allowlist = new AllowlistEngine(artifacts.allowlist);
-  const providers = new ProviderEngine(artifacts.providers);
-  const orchestrator = new CleanerOrchestrator(
-    trackers,
-    allowlist,
-    providers,
-    artifacts.policy
-  );
+  let trackers: TrackerEngine | null = null;
+  let allowlist: AllowlistEngine | null = null;
+  let providers: ProviderEngine | null = null;
+  let orchestrator: CleanerOrchestrator | null = null;
 
-  return {
+  const runtime: EngineRuntime = {
     artifacts,
-    trackers,
-    allowlist,
-    providers,
     blocklist,
-    orchestrator,
+    get trackers() {
+      return (trackers ??= new TrackerEngine(
+        artifacts.trackers.groups
+      ));
+    },
+    get allowlist() {
+      return (allowlist ??= new AllowlistEngine(artifacts.allowlist));
+    },
+    get providers() {
+      return (providers ??= new ProviderEngine(artifacts.providers));
+    },
+    get orchestrator() {
+      return (orchestrator ??= new CleanerOrchestrator(
+        runtime.trackers,
+        runtime.allowlist,
+        runtime.providers,
+        artifacts.policy
+      ));
+    },
   };
+
+  return runtime;
 };
 
 export const getEngineRuntime = (): EngineRuntime => {

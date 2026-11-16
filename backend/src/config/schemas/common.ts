@@ -81,7 +81,9 @@ export const KNOWN_TRACKER_KEYS = [
   "exact",
   "prefixes",
   "patterns",
+  "pairPatterns",
   "exceptions",
+  "excludeHosts",
   "source",
   "upstreamVersion",
 ] as const;
@@ -117,6 +119,7 @@ export const KNOWN_ALLOWLIST_KEYS = [
   "schemaVersion",
   "global",
   "domains",
+  "exceptions",
 ] as const;
 
 export const KNOWN_POLICY_KEYS = [

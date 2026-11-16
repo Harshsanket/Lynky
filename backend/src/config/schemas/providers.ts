@@ -12,6 +12,7 @@ export const providerSchema = z
     hostHints: z.array(hostHintSchema).default([]),
     completeProvider: z.boolean(),
     rules: z.array(nonEmptyString).default([]),
+    pairPatterns: z.array(nonEmptyString).default([]),
     referralMarketing: z.array(nonEmptyString).default([]),
     exceptions: z.array(nonEmptyString).default([]),
     redirections: z.array(nonEmptyString).default([]),

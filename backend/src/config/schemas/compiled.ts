@@ -7,7 +7,10 @@ const trackerGroupSchema = z.object({
   exact: z.array(z.string()),
   prefixes: z.array(z.string()),
   patterns: z.array(z.string()),
+  pairExact: z.array(z.string()),
+  pairPatterns: z.array(z.string()),
   exceptions: z.array(z.string()),
+  excludeHosts: z.array(z.string()),
 });
 
 const ruleBucketsSchema = z.object({
@@ -22,6 +25,8 @@ const providerSchema = z.object({
   hostHints: z.array(z.string()),
   completeProvider: z.boolean(),
   rules: ruleBucketsSchema,
+  pairExact: z.array(z.string()),
+  pairPatterns: z.array(z.string()),
   referralMarketing: ruleBucketsSchema,
   exceptions: z.array(z.string()),
   redirections: z.array(z.string()),
@@ -70,7 +75,7 @@ export const compiledArtifactsSchema = z.object({
     schemaVersion: z.literal(ARTIFACT_SCHEMA_VERSION),
     groups: z.object({
       lynky: trackerGroupSchema,
-      clearurlsGlobal: trackerGroupSchema,
+      external: trackerGroupSchema,
     }),
   }),
   providers: z.object({
@@ -81,6 +86,7 @@ export const compiledArtifactsSchema = z.object({
     schemaVersion: z.literal(ARTIFACT_SCHEMA_VERSION),
     global: z.array(z.string()),
     domains: z.record(z.string(), z.array(z.string())),
+    exceptions: z.record(z.string(), z.array(z.string())),
   }),
   policy: z.object({
     schemaVersion: z.literal(ARTIFACT_SCHEMA_VERSION),

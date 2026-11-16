@@ -205,7 +205,7 @@ const assertTrackers = (value: TrackersArtifact): TrackersArtifact => {
     );
   }
 
-  for (const group of ["lynky", "clearurlsGlobal"] as const) {
+  for (const group of ["lynky", "external"] as const) {
     const candidate = value.groups[group];
 
     if (!candidate) {
@@ -219,8 +219,20 @@ const assertTrackers = (value: TrackersArtifact): TrackersArtifact => {
     assertStringArray(candidate.prefixes, `trackers.${group}.prefixes`);
     assertStringArray(candidate.patterns, `trackers.${group}.patterns`);
     assertStringArray(
+      candidate.pairExact,
+      `trackers.${group}.pairExact`
+    );
+    assertStringArray(
+      candidate.pairPatterns,
+      `trackers.${group}.pairPatterns`
+    );
+    assertStringArray(
       candidate.exceptions,
       `trackers.${group}.exceptions`
+    );
+    assertStringArray(
+      candidate.excludeHosts,
+      `trackers.${group}.excludeHosts`
     );
   }
 
@@ -272,6 +284,14 @@ const assertProviders = (value: ProvidersArtifact): ProvidersArtifact => {
 
     assertStringArray(provider.hostHints, `providers[${index}].hostHints`);
     assertRuleBuckets(provider.rules, `providers[${index}].rules`);
+    assertStringArray(
+      provider.pairExact,
+      `providers[${index}].pairExact`
+    );
+    assertStringArray(
+      provider.pairPatterns,
+      `providers[${index}].pairPatterns`
+    );
     assertRuleBuckets(
       provider.referralMarketing,
       `providers[${index}].referralMarketing`
@@ -305,6 +325,17 @@ const assertAllowlist = (value: AllowlistArtifact): AllowlistArtifact => {
 
   for (const [domain, parameters] of Object.entries(value.domains)) {
     assertStringArray(parameters, `allowlist.domains.${domain}`);
+  }
+
+  if (!value.exceptions || typeof value.exceptions !== "object") {
+    throw new ArtifactError(
+      "artifact_shape_error",
+      "allowlist.exceptions must be an object"
+    );
+  }
+
+  for (const [domain, parameters] of Object.entries(value.exceptions)) {
+    assertStringArray(parameters, `allowlist.exceptions.${domain}`);
   }
 
   return value;
@@ -451,18 +482,27 @@ export const loadCompiledArtifacts = (
 
   verifyJsonHashes(resolved, manifest);
 
-  const trackers = assertTrackers(
-    readJson<TrackersArtifact>(resolved, "trackers.json")
-  );
-  const providers = assertProviders(
-    readJson<ProvidersArtifact>(resolved, "providers.json")
-  );
-  const allowlist = assertAllowlist(
-    readJson<AllowlistArtifact>(resolved, "allowlist.json")
-  );
-  const policy = assertPolicy(
-    readJson<PolicyArtifact>(resolved, "policy.json")
-  );
+  let trackers: TrackersArtifact | null = null;
+  let providers: ProvidersArtifact | null = null;
+  let allowlist: AllowlistArtifact | null = null;
+  let policy: PolicyArtifact | null = null;
+
+  const getTrackers = (): TrackersArtifact =>
+    (trackers ??= assertTrackers(
+      readJson<TrackersArtifact>(resolved, "trackers.json")
+    ));
+  const getProviders = (): ProvidersArtifact =>
+    (providers ??= assertProviders(
+      readJson<ProvidersArtifact>(resolved, "providers.json")
+    ));
+  const getAllowlist = (): AllowlistArtifact =>
+    (allowlist ??= assertAllowlist(
+      readJson<AllowlistArtifact>(resolved, "allowlist.json")
+    ));
+  const getPolicy = (): PolicyArtifact =>
+    (policy ??= assertPolicy(
+      readJson<PolicyArtifact>(resolved, "policy.json")
+    ));
 
   let artifactHashValid = false;
 
@@ -494,20 +534,28 @@ export const loadCompiledArtifacts = (
     fullRuntimeValidation(
       resolved,
       manifest,
-      trackers,
-      providers,
-      allowlist,
-      policy
+      getTrackers(),
+      getProviders(),
+      getAllowlist(),
+      getPolicy()
     );
   }
 
   return {
     dir: resolved,
     manifest,
-    trackers,
-    providers,
-    allowlist,
-    policy,
     artifactHashValid,
+    get trackers() {
+      return getTrackers();
+    },
+    get providers() {
+      return getProviders();
+    },
+    get allowlist() {
+      return getAllowlist();
+    },
+    get policy() {
+      return getPolicy();
+    },
   };
 };

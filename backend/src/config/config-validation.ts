@@ -9,6 +9,7 @@ import {
 } from "./blocklist-parser.js";
 import {
   hasCaptureGroup,
+  isValidHostHint,
   isSafeRegex,
   isStartAnchored,
   unknownKeys,
@@ -40,6 +41,11 @@ import {
   type TrackerDataset,
 } from "./schemas/trackers.js";
 import { applyProviderOverrides } from "./provider-overrides.js";
+import {
+  parseTrackerSources,
+  type ParsedTrackerSources,
+  type TrackerSourceInput,
+} from "../../scripts/config/trackers-parser.js";
 
 export const CONFIG_VALIDATOR_VERSION = "1";
 
@@ -54,7 +60,8 @@ export interface ConfigIssue {
 export interface ConfigPaths {
   root: string;
   lynkyTrackers: string;
-  clearurlsGlobalTrackers: string;
+  trackerSources: string;
+  policySources: string;
   clearurlsProviders: string;
   providerOverrides: string;
   upstreamData: string;
@@ -68,8 +75,9 @@ export interface ConfigPaths {
 export interface ValidatedConfig {
   paths: ConfigPaths;
   lynky: TrackerDataset;
-  clearurlsGlobal: TrackerDataset;
+  external: TrackerDataset;
   providers: Provider[];
+  trackerReport: ParsedTrackerSources["report"];
   allowlist: AllowlistConfig;
   policy: CleanerPolicy;
   blocklistSources: BlocklistSource[];
@@ -108,12 +116,12 @@ export const resolveConfigPaths = (root?: string): ConfigPaths => {
       "generic",
       "lynky.json"
     ),
-    clearurlsGlobalTrackers: path.join(
+    trackerSources: path.join(
       resolved,
       "trackers",
-      "generic",
-      "clearurls-global.json"
+      "sources.json"
     ),
+    policySources: path.join(resolved, "policies", "sources.json"),
     clearurlsProviders: path.join(
       resolved,
       "trackers",
@@ -303,7 +311,9 @@ const validateTrackers = (
     ["exact", dataset.exact],
     ["prefixes", dataset.prefixes],
     ["patterns", dataset.patterns],
+    ["pairPatterns", dataset.pairPatterns],
     ["exceptions", dataset.exceptions],
+    ["excludeHosts", dataset.excludeHosts],
   ] as const) {
     if (values.length > 10000) {
       issues.error(
@@ -387,6 +397,31 @@ const validateTrackers = (
     }
   });
 
+  dataset.pairPatterns.forEach((pattern, index) => {
+    if (!isSafeRegex(pattern)) {
+      issues.error(
+        file,
+        "pairPatterns",
+        index,
+        "unsafe_regex",
+        `pair pattern ${JSON.stringify(pattern)} failed the regex safety check`
+      );
+      return;
+    }
+
+    try {
+      new RegExp(pattern, "i");
+    } catch (error) {
+      issues.error(
+        file,
+        "pairPatterns",
+        index,
+        "invalid_regex",
+        (error as Error).message
+      );
+    }
+  });
+
   dataset.exceptions.forEach((pattern, index) => {
     if (!isStartAnchored(pattern)) {
       issues.error(
@@ -418,6 +453,18 @@ const validateTrackers = (
         index,
         "invalid_regex",
         (error as Error).message
+      );
+    }
+  });
+
+  dataset.excludeHosts.forEach((host, index) => {
+    if (!isValidHostHint(host)) {
+      issues.error(
+        file,
+        "excludeHosts",
+        index,
+        "invalid_host",
+        `${JSON.stringify(host)} is not a valid host suffix`
       );
     }
   });
@@ -478,7 +525,7 @@ const validateProviders = (
         field,
         index,
         "global_rules_in_providers",
-        "globalRules belongs in trackers/generic/clearurls-global.json"
+        "globalRules belongs in the external tracker group"
       );
     }
 
@@ -530,6 +577,7 @@ const validateProviders = (
 
     for (const [name, rules] of [
       ["rules", provider.rules],
+      ["pairPatterns", provider.pairPatterns],
       ["referralMarketing", provider.referralMarketing],
       ["exceptions", provider.exceptions],
       ["redirections", provider.redirections],
@@ -638,6 +686,30 @@ const validateAllowlist = (
       "duplicate_value",
       `duplicate global allowlist parameter ${JSON.stringify(duplicate)}`
     );
+  }
+
+  for (const [domain, parameters] of Object.entries(
+    allowlist.exceptions
+  )) {
+    if (domain !== domain.toLowerCase()) {
+      issues.error(
+        file,
+        `exceptions.${domain}`,
+        domain,
+        "not_lowercase",
+        "domain keys must be lowercase"
+      );
+    }
+
+    for (const duplicate of duplicateValues(parameters)) {
+      issues.error(
+        file,
+        `exceptions.${domain}`,
+        parameters.indexOf(duplicate),
+        "duplicate_value",
+        `duplicate exception parameter ${JSON.stringify(duplicate)}`
+      );
+    }
   }
 
   for (const [domain, parameters] of Object.entries(allowlist.domains)) {
@@ -917,21 +989,175 @@ const upstreamVersionSchema = z.object({
   upstreamCommit: z.string().min(1).optional(),
 });
 
+const sourceManifestSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    sources: z.array(
+      z
+        .object({
+          file: z.string().min(1),
+          format: z.string().min(1).optional(),
+          required: z.boolean().default(true),
+          minEntries: z.number().int().min(0).default(0),
+          sourceUrl: z.string().url().optional(),
+          license: z.string().min(1).optional(),
+        })
+        .loose()
+    ),
+  })
+  .loose();
+
+const readSourceManifest = (
+  manifestPath: string,
+  root: string,
+  issues: ReturnType<typeof issueList>
+) => {
+  const read = readJson(manifestPath);
+
+  if (!read.ok) {
+    issues.error(
+      relativeFile(root, manifestPath),
+      "$",
+      null,
+      "read_error",
+      read.error ?? "unable to read source manifest"
+    );
+    return null;
+  }
+
+  return parseWithSchema(
+    sourceManifestSchema,
+    read.value,
+    relativeFile(root, manifestPath),
+    issues
+  );
+};
+
+const loadTrackerInputs = (
+  paths: ConfigPaths,
+  issues: ReturnType<typeof issueList>
+): TrackerSourceInput[] | null => {
+  const manifest = readSourceManifest(
+    paths.trackerSources,
+    paths.root,
+    issues
+  );
+
+  if (!manifest) {
+    return null;
+  }
+
+  const inputs: TrackerSourceInput[] = [];
+
+  for (const source of manifest.sources) {
+    const filePath = path.join(
+      paths.root,
+      "trackers",
+      ...source.file.split("/")
+    );
+
+    if (!fs.existsSync(filePath)) {
+      if (source.required) {
+        issues.error(
+          relativeFile(paths.root, filePath),
+          "$",
+          null,
+          "tracker_source_missing",
+          "required tracker source is missing"
+        );
+      }
+      continue;
+    }
+
+    if (
+      source.format === "adguard-removeparam" &&
+      !source.license
+    ) {
+      issues.warning(
+        relativeFile(paths.root, filePath),
+        "license",
+        null,
+        "tracker_license_missing",
+        "external tracker source has no license field"
+      );
+    }
+
+    if (source.format === "adguard-removeparam") {
+      const text = fs.readFileSync(filePath, "utf-8");
+      const entries = text
+        .split(/\r?\n/)
+        .filter(
+          (line) =>
+            line.trim().length > 0 && !line.trim().startsWith("!")
+        ).length;
+
+      if (entries < source.minEntries) {
+        issues.error(
+          relativeFile(paths.root, filePath),
+          "minEntries",
+          null,
+          "tracker_source_too_small",
+          `parsed ${entries} entries, expected at least ${source.minEntries}`
+        );
+      }
+
+      inputs.push({
+        file: source.file,
+        text,
+      });
+    }
+  }
+
+  return inputs;
+};
+
+const validatePolicyManifest = (
+  paths: ConfigPaths,
+  issues: ReturnType<typeof issueList>
+): void => {
+  const manifest = readSourceManifest(paths.policySources, paths.root, issues);
+
+  if (!manifest) {
+    return;
+  }
+
+  for (const source of manifest.sources) {
+    const filePath = path.join(
+      paths.root,
+      "policies",
+      ...source.file.split("/")
+    );
+
+    if (!fs.existsSync(filePath) && source.required) {
+      issues.error(
+        relativeFile(paths.root, filePath),
+        "$",
+        null,
+        "policy_source_missing",
+        "required policy source is missing"
+      );
+    }
+  }
+};
+
 export const validateConfig = (
   root?: string
 ): ConfigValidationResult => {
   const paths = resolveConfigPaths(root);
   const issues = issueList();
 
+  let parsedTrackerProviders: Provider[] = [];
+  let parsedTrackerAllowlist: Record<string, string[]> = {};
+
   /* ---------------------------------------------------------------------- */
   /*  Trackers                                                              */
   /* ---------------------------------------------------------------------- */
 
   const lynkyRead = readJson(paths.lynkyTrackers);
-  const globalRead = readJson(paths.clearurlsGlobalTrackers);
 
   let lynky: TrackerDataset | null = null;
-  let clearurlsGlobal: TrackerDataset | null = null;
+  let external: TrackerDataset | null = null;
+  let trackerReport: ParsedTrackerSources["report"] | null = null;
 
   if (!lynkyRead.ok) {
     issues.error(
@@ -953,42 +1179,57 @@ export const validateConfig = (
     }
   }
 
-  if (!globalRead.ok) {
-    issues.error(
-      relativeFile(paths.root, paths.clearurlsGlobalTrackers),
-      "$",
-      null,
-      "read_error",
-      globalRead.error ?? "unable to read file"
-    );
-  } else {
-    const file = relativeFile(paths.root, paths.clearurlsGlobalTrackers);
-    warnUnknownKeys(globalRead.value, KNOWN_TRACKER_KEYS, file, issues);
-    clearurlsGlobal = parseWithSchema(
-      trackerDatasetSchema,
-      globalRead.value,
-      file,
-      issues
+  const trackerInputs = loadTrackerInputs(paths, issues);
+
+  if (trackerInputs) {
+    const parsed = parseTrackerSources(trackerInputs);
+    trackerReport = parsed.report;
+
+    external = {
+      schemaVersion: 1,
+      caseInsensitive: true,
+      exact: parsed.generic.exact,
+      prefixes: parsed.generic.prefixes,
+      patterns: parsed.generic.patterns,
+      pairPatterns: parsed.generic.pairPatterns,
+      exceptions: parsed.generic.exceptions,
+      excludeHosts: parsed.generic.excludeHosts,
+      source: "adguard-trackparam + legitimate-url-shortener",
+    };
+
+    validateTrackers(
+      external,
+      "trackers/sources.json",
+      issues,
+      { label: "external tracker dataset" }
     );
 
-    if (clearurlsGlobal) {
-      validateTrackers(clearurlsGlobal, file, issues, {
-        requireSource: true,
-        label: "ClearURLs global tracker dataset",
-      });
+    for (const [file, counts] of Object.entries(parsed.report.files)) {
+      if (counts.rejected > 0) {
+        issues.warning(
+          file,
+          "$",
+          null,
+          "tracker_rules_rejected",
+          `${counts.rejected} of ${counts.considered} rules were rejected or unsupported`
+        );
+      }
     }
+
+    parsedTrackerProviders = parsed.providers;
+    parsedTrackerAllowlist = parsed.allowlistExceptions;
   }
 
-  if (lynky && clearurlsGlobal) {
+  if (lynky && external) {
     const file = relativeFile(paths.root, paths.root);
     const lynkyExact = new Set(lynky.exact);
-    const exactOverlap = clearurlsGlobal.exact.filter((value) =>
+    const exactOverlap = external.exact.filter((value) =>
       lynkyExact.has(value)
     );
     const prefixOverlap: string[] = [];
 
     for (const left of lynky.prefixes) {
-      for (const right of clearurlsGlobal.prefixes) {
+      for (const right of external.prefixes) {
         if (left.startsWith(right) || right.startsWith(left)) {
           prefixOverlap.push(`${left} / ${right}`);
         }
@@ -1034,7 +1275,9 @@ export const validateConfig = (
       file,
       issues
     );
-    baseProviders = dataset?.providers ?? null;
+    baseProviders = dataset
+      ? [...dataset.providers, ...parsedTrackerProviders]
+      : null;
   }
 
   if (!overridesRead.ok) {
@@ -1186,6 +1429,7 @@ export const validateConfig = (
             .filter((id) => id !== "globalRules")
             .sort();
           const actualIds = baseProviders
+            .filter((provider) => !provider.id.startsWith("adguard:"))
             .map((provider) => provider.id)
             .sort();
 
@@ -1210,6 +1454,8 @@ export const validateConfig = (
   /*  Policies                                                              */
   /* ---------------------------------------------------------------------- */
 
+  validatePolicyManifest(paths, issues);
+
   const allowlistRead = readJson(paths.allowlist);
   const policyRead = readJson(paths.cleanerPolicy);
 
@@ -1230,7 +1476,62 @@ export const validateConfig = (
     allowlist = parseWithSchema(allowlistSchema, allowlistRead.value, file, issues);
 
     if (allowlist) {
+      for (const [domain, keys] of Object.entries(parsedTrackerAllowlist)) {
+        const existing = allowlist.exceptions[domain] ?? [];
+        allowlist.exceptions[domain] = [
+          ...new Set([...existing, ...keys]),
+        ].sort();
+      }
+
       validateAllowlist(allowlist, file, issues);
+
+      if (trackerReport) {
+        for (const conversion of trackerReport.conversions) {
+          const policyKeys = allowlist.domains[conversion.host] ?? [];
+
+          if (
+            policyKeys.includes(conversion.key) ||
+            policyKeys.includes("*")
+          ) {
+            conversion.note = "already covered by policy allowlist";
+          }
+        }
+      }
+
+      if (trackerReport && external) {
+        for (const [domain, keys] of Object.entries(allowlist.domains)) {
+          for (const key of keys) {
+            const normalized = key.toLowerCase();
+            const genericRemoval =
+              external.exact.includes(normalized) ||
+              external.prefixes.some((prefix) =>
+                normalized.startsWith(prefix)
+              ) ||
+              external.patterns.some((pattern) =>
+                new RegExp(pattern, "i").test(normalized)
+              );
+            const providerRemoval = parsedTrackerProviders.some(
+              (provider) =>
+                provider.hostHints.some(
+                  (hint) =>
+                    domain === hint || domain.endsWith(`.${hint}`)
+                ) && provider.rules.includes(normalized)
+            );
+
+            if (genericRemoval || providerRemoval) {
+              trackerReport.conflicts.push({
+                host: domain,
+                key: normalized,
+                removal: genericRemoval
+                  ? "external-generic"
+                  : "host-scoped",
+                exception: "policy-allowlist",
+                resolution: "preserve",
+              });
+            }
+          }
+        }
+      }
     }
   }
 
@@ -1349,13 +1650,14 @@ export const validateConfig = (
   if (
     !ok ||
     !lynky ||
-    !clearurlsGlobal ||
+    !external ||
     !providers ||
     !allowlist ||
     !policy ||
     !blocklistSources ||
     !blocklists ||
-    !upstreamVersion
+    !upstreamVersion ||
+    !trackerReport
   ) {
     return {
       ok: false,
@@ -1372,8 +1674,9 @@ export const validateConfig = (
     data: {
       paths,
       lynky,
-      clearurlsGlobal,
+      external,
       providers,
+      trackerReport,
       allowlist,
       policy,
       blocklistSources,
