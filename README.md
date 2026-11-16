@@ -3,7 +3,7 @@ Lynky is an open-source URL cleaner and shortener designed to make shared links 
 
 ## Overview
 
-Lynky cleans known tracking parameters from a URL before it is shared, shortens the result, and redirects public short links to the cleaned destination. It provides a public web UI, an authenticated shortening API, and a dev-only sysadmin dashboard. The cleaning, storage, redirect, and limit behavior is implemented in a TypeScript/Express backend with a React frontend.
+Lynky cleans known tracking parameters from a URL before it is shared, shortens the result, and redirects public short links to the cleaned destination. It provides a public web UI, an authenticated shortening API, and a sysadmin dashboard available whenever its credentials are configured. The cleaning, storage, redirect, and limit behavior is implemented in a TypeScript/Express backend with a React frontend.
 
 ## Requirements
 
@@ -126,13 +126,14 @@ The cleaned URL is what gets deduplicated and stored. The original input is not 
 - Static sets are compiled into a minimal perfect hash (MPHF) with 64-bit verification and exact collision checks.
 - A sorted-hash fallback table handles entries the MPHF cannot place.
 - Provider matching uses a host-hint prefilter, host-suffix walks, and the original provider regex as the final authority.
+- Tracker rules compile into exact sets, prefix arrays, key regexes, and value-conditioned pair patterns; excluded-host sets skip generic groups on listed hosts.
 - Dedupe uses keyed HMAC-SHA-256 (`urlHash`); redirect lookup uses keyed HMAC-SHA-256 (`codeHash`).
 - Short codes are re-derived from `urlHash + codeSalt`; `codeSalt` makes repeat shorten requests stable across cache loss.
 - Destinations are stored as AES-256-GCM ciphertext; the authentication tag detects corruption.
 
 ### Filters
 
-Provider rules compile into exact `Set`, prefix-array, and regex-array classes. Compilation deduplicates and merges overlapping rules, warns about overlaps, and preserves provider order. The allowlist is evaluated before every removal path, so a protected parameter is never stripped by a tracker or referral rule.
+Provider rules compile into exact `Set`, prefix-array, regex-array, and value-conditioned pair classes. Compilation deduplicates and merges overlapping rules, warns about overlaps, and preserves provider order. Upstream exceptions union into the allowlist overlay before any removal path, so a protected parameter is never stripped by a tracker or referral rule. Unrepresentable exceptions are converted to conservative host-wide allowlist entries instead of being dropped.
 
 ### Blocklists
 
@@ -150,9 +151,11 @@ Only public HTTP(S) destinations are accepted. Credentials, localhost/private/sp
 
 Human-editable rules and blocklists live under `backend/config/`. `npm run config:validate` checks structure, semantics, cross-file references, and blocklist counts. `npm run config:compile` writes deterministic artifacts under `dist/config/compiled/` with source hashes and a manifest. Production loads only compiled artifacts and refuses to start when they are missing or invalid. Trackers, providers, allowlist, and policy fail closed; blocklist availability follows `BLOCKLIST_FAILURE_MODE`. `/ready` reports config, blocklist, database, and cache state. Logs are structured JSON with request IDs and redacted context; raw URLs, queries, headers, API keys, ciphertext, and secrets are never logged.
 
+Dataset families are standardized under `backend/config/trackers/`, `backend/config/policies/`, and `backend/config/blocklists/`, each with its own `sources.json` manifest. `npm run trackers:fetch` refreshes the AdGuard TrackParamFilter and Actually Legitimate URL Shortener text sources; `npm run config:compile` parses and normalizes them at build time. No runtime fetch or second cleaning engine is involved. Precedence is deterministic: Lynky policy allowlist, upstream exceptions, host-scoped provider rules, generic tracker groups, then value-conditioned pair rules. Duplicate exact and prefix rules are collapsed; removal/exception conflicts are reported as preserve. The build writes `dist/config/compiled/report.json` with raw/unique counts, per-source rejections, conflicts, and provenance, while runtime artifacts stay provenance-free. Machine artifacts are minified, provider runtime objects are built lazily on first candidate access, and the compiled artifact hash is still verified at boot.
+
 ## Deployment
 
-The frontend deploys to Vercel. Set `VITE_API_URL` to the backend `/api/v1` URL and `VITE_SITE_URL`/`VITE_SHORT_URL` to the public origins; `frontend/vercel.json` rewrites SPA deep links and includes the BotID challenge/proxy rewrites.
+The frontend deploys to Vercel. Production sets `VITE_API_URL=/api/v1` and uses `frontend/vercel.json` to proxy `/api/v1/:path*` and `/sysadmin/api/:path*` to the backend, so browser API traffic is same-origin. Set `VITE_SITE_URL` to the public site origin and `VITE_SHORT_URL` to the public short-link origin; the build fails fast when `VITE_SHORT_URL` is missing. `frontend/vercel.json` also rewrites SPA deep links.
 
 The backend runs on any Node host:
 
@@ -162,7 +165,7 @@ npm run build
 npm start
 ```
 
-`npm run build` typechecks, copies `config/` into `dist/`, and compiles the deterministic artifacts. `npm start` runs `node dist/src/server.js`. MongoDB is required. Upstash Redis is required in production for cache, rate limits, click buffering, and admin lockouts; development uses the in-memory store. Set `NODE_ENV=production`, `MONGODB_URI`, `PUBLIC_URL`, `FRONTEND_URL`, `ENCRYPTION_KEY`, `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, and any `SYSADMIN_*` values. Do not set `SERVER_STAGE_TIMINGS` or other benchmark overrides in production. The benchmark report endpoint and sysadmin section are dev-only.
+`npm run build` typechecks, copies `config/` into `dist/`, and compiles the deterministic artifacts. `npm start` runs `node dist/src/server.js`. MongoDB is required. Upstash Redis is required in production for cache, rate limits, click buffering, and admin lockouts; development uses the in-memory store. Set `NODE_ENV=production`, `MONGODB_URI`, `PUBLIC_URL`, `FRONTEND_URL`, `ENCRYPTION_KEY`, `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, and any `SYSADMIN_*` values. Do not set `SERVER_STAGE_TIMINGS` or other benchmark overrides in production. The benchmark report endpoint is dev-only; the sysadmin dashboard is available whenever its credentials are configured. The production Upstash REST URL must use `https://`; startup refuses `http://`.
 
 ## Troubleshooting
 
@@ -170,7 +173,7 @@ npm start
 - **429 responses**: the shared global or per-IP create limit was reached; wait for `Retry-After` or adjust the limits for local load tests only.
 - **Database is unavailable / 503**: check `MONGODB_URI` and whether MongoDB is accepting connections.
 - **Blocklist degraded or closed**: check the files and hashes declared in `config/blocklists/sources.json`; `open` continues with degraded readiness, `closed` rejects creates.
-- **Sysadmin login lockout**: three failures in 15 minutes lock the `(IP, username)` pair; wait for the window to expire or clear the in-memory or Upstash lockout state.
+- **Sysadmin login lockout**: three failures in 15 minutes lock the `(IP, username)` pair, and the login route also has a per-IP 20-attempts/15-minute limiter; wait for the window to expire or clear the in-memory or Upstash state.
 - **Upstash configuration missing in production**: startup fails by design; set both `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`.
 - **Stale compiled artifacts**: rerun `npm run blocklists:fetch` and `npm run config:compile`, or `npm run build`.
 
@@ -184,6 +187,7 @@ Backend:
 - `npm run config:validate` — validate config sources and blocklists.
 - `npm run config:compile` — emit deterministic compiled artifacts.
 - `npm run blocklists:fetch` — refresh operator-supplied blocklists.
+- `npm run trackers:fetch` — refresh AdGuard TrackParamFilter and Legitimate URL Shortener sources.
 - `npm run admin:hash-password -- '<password>'` — generate `SYSADMIN_PASSWORD_HASH`.
 - `npm run provision:keys` — provision API keys.
 
@@ -199,7 +203,7 @@ Frontend:
 
 Lynky derives separate HMAC keys from `ENCRYPTION_KEY` for URL dedupe, short-code lookup, and code-salt recovery, so a leaked database is not an offline URL-confirmation oracle. Unique `urlHash` and `codeHash` indexes prevent duplicate or placeholder rows, and own-link detection rejects Lynky's own origins. Destinations use AES-256-GCM with authentication tags, so corrupted ciphertext is detected rather than redirected.
 
-Admin sessions use opaque Mongo-backed IDs, a 30-minute sliding idle window, an 8-hour absolute cap, `HttpOnly`/`SameSite=Strict` cookies (`Secure` in production), and CSRF tokens on state changes. Login failures are rate-limited and do not create Mongo auth-failure documents. BotID protects high-value create and usage routes; global and per-IP limits bound traffic.
+Admin sessions use opaque Mongo-backed IDs, a 30-minute sliding idle window, an 8-hour absolute cap, `HttpOnly` cookies that are `Secure` in production, and CSRF tokens on state changes. `SameSite=Strict` is used for same-origin deployments; the split-origin production setup uses `SameSite=None` so the proxied session cookie remains usable. Login failures are rate-limited and do not create Mongo auth-failure documents. A global 5,000/hour Redis limit plus per-IP limiters for create (100/15m), usage reads (60/15m), and sysadmin login (20/15m) bound traffic.
 
 Production errors are masked: known public validation/policy messages pass through, while internal errors collapse to the generic copy. Logs redact URLs to origins and never include raw URLs, query strings, headers, API keys, ciphertext, or secrets. Config artifacts fail closed when corrupt; blocklist screening is create-time only, so redirects remain stable when lists change.
 
@@ -225,6 +229,8 @@ Claude 5.5 by Anthropic, GLM 5.3 by Z.ai, and DeepSeek 4.1 were used during deve
 - OpenPhish — phishing intelligence (credited source)
 - HaGeZi — DNS blocklists
 - ClearURLs — tracking-parameter rules
+- AdGuard TrackParamFilter — tracking-parameter rules (GPL-3.0)
+- DandelionSprout / Actually Legitimate URL Shortener — tracking-parameter rules
 - Phishing Army — phishing domain list
 - URLhaus — malicious URL hostfile
 - Vercel — frontend hosting and deployment
