@@ -736,7 +736,7 @@ const Blog = () => {
           />
           <Field
             label="tracking rules"
-            value="~6.9k normalized"
+            value="about 6.7k normalized"
             note="AdGuard TrackParamFilter plus Legitimate URL Shortener; parsed at build time."
           />
           <Field
