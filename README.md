@@ -87,9 +87,16 @@ Backend values mirror `backend/.env.example`; frontend values mirror `frontend/.
 ### Sysadmin
 
 The Mongo-session dashboard is available whenever both credentials below are
-set; there is no separate enable flag. API keys can be generated, inspected,
-and reset from the sysadmin dashboard; secrets are shown once and only hashes
-are stored.
+set; there is no separate enable flag.
+
+API keys are managed from the dashboard:
+
+- Create a key with a required name; the secret is shown once.
+- Copy it, or send it by email with the API base, usage endpoint, monthly
+  limit, and a link to the `/api` guide.
+- Only the SHA-256 hash is stored.
+- Reset current-month usage, disable, re-enable, or permanently delete a key.
+- Keys created before names were required render as `Legacy key`.
 
 | Variable | Example | Meaning |
 |---|---|---|

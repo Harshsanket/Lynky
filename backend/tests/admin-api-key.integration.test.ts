@@ -37,6 +37,7 @@ const {
 const {
   adminApiKeysController,
   adminCreateApiKeyController,
+  adminDeleteApiKeyController,
   adminDisableApiKeyController,
   adminEnableApiKeyController,
   adminResetApiKeyUsageController,
@@ -113,22 +114,80 @@ after(async () => {
 });
 
 run("rejects API-key management without a session", async () => {
-  const res = fakeResponse();
+  const keyId = new mongoose.Types.ObjectId().toString();
+  const attempts = [
+    (res: any) => adminApiKeysController(fakeRequest(), res),
+    (res: any) =>
+      adminCreateApiKeyController(
+        fakeRequest({ body: { label: "admin-api-key-test" } }),
+        res
+      ),
+    (res: any) =>
+      adminResetApiKeyUsageController(
+        fakeRequest({ params: { id: keyId } }),
+        res
+      ),
+    (res: any) =>
+      adminDisableApiKeyController(
+        fakeRequest({ params: { id: keyId } }),
+        res
+      ),
+    (res: any) =>
+      adminEnableApiKeyController(
+        fakeRequest({ params: { id: keyId } }),
+        res
+      ),
+    (res: any) =>
+      adminDeleteApiKeyController(
+        fakeRequest({ params: { id: keyId } }),
+        res
+      ),
+  ];
 
-  await adminApiKeysController(fakeRequest(), res);
+  for (const attempt of attempts) {
+    const res = fakeResponse();
 
-  assert.equal(res.statusCode, 401);
+    await attempt(res);
+    assert.equal(res.statusCode, 401);
+  }
 });
 
 run("rejects mutating API-key calls without CSRF", async () => {
-  const res = fakeResponse();
+  const keyId = new mongoose.Types.ObjectId().toString();
+  const attempts = [
+    (res: any) =>
+      adminCreateApiKeyController(
+        fakeRequest({ session, body: { label: "admin-api-key-test" } }),
+        res
+      ),
+    (res: any) =>
+      adminResetApiKeyUsageController(
+        fakeRequest({ session, params: { id: keyId } }),
+        res
+      ),
+    (res: any) =>
+      adminDisableApiKeyController(
+        fakeRequest({ session, params: { id: keyId } }),
+        res
+      ),
+    (res: any) =>
+      adminEnableApiKeyController(
+        fakeRequest({ session, params: { id: keyId } }),
+        res
+      ),
+    (res: any) =>
+      adminDeleteApiKeyController(
+        fakeRequest({ session, params: { id: keyId } }),
+        res
+      ),
+  ];
 
-  await adminCreateApiKeyController(
-    fakeRequest({ session, body: { label: "admin-api-key-test" } }),
-    res
-  );
+  for (const attempt of attempts) {
+    const res = fakeResponse();
 
-  assert.equal(res.statusCode, 403);
+    await attempt(res);
+    assert.equal(res.statusCode, 403);
+  }
 });
 
 run("generates a key once, lists it redacted, and manages status", async () => {
@@ -145,6 +204,7 @@ run("generates a key once, lists it redacted, and manages status", async () => {
 
   assert.equal(createRes.statusCode, 201);
   assert.equal(typeof createRes.body.data.secret, "string");
+  assert.equal(createRes.body.data.apiBaseUrl, "https://lynky.test");
   assert.equal(
     createRes.body.data.key.keyPrefix,
     createRes.body.data.secret.slice(0, 8)
@@ -227,10 +287,66 @@ run("generates a key once, lists it redacted, and manages status", async () => {
   assert.equal(stored?.status, "active");
   assert.equal(stored?.label, "admin-api-key-test created");
 
-  await ApiKey.deleteOne({ _id: keyId });
+  const deleteRes = fakeResponse();
+
+  await adminDeleteApiKeyController(
+    fakeRequest({
+      session,
+      csrf: session.csrfToken,
+      params: { id: keyId },
+    }),
+    deleteRes
+  );
+
+  assert.equal(deleteRes.statusCode, 200);
+  assert.equal(deleteRes.body.data.key.id, keyId);
+  assert.equal(deleteRes.body.data.key.label, "admin-api-key-test created");
+  assert.equal(await ApiKey.findById(keyId).lean(), null);
+
+  const afterDeleteRes = fakeResponse();
+
+  await adminApiKeysController(fakeRequest({ session }), afterDeleteRes);
+
+  assert.equal(afterDeleteRes.statusCode, 200);
+  assert.equal(
+    afterDeleteRes.body.data.keys.some(
+      (key: { id: string }) => key.id === keyId
+    ),
+    false
+  );
 });
 
 run("rejects invalid labels and ids", async () => {
+  const missingRes = fakeResponse();
+
+  await adminCreateApiKeyController(
+    fakeRequest({ session, csrf: session.csrfToken }),
+    missingRes
+  );
+
+  assert.equal(missingRes.statusCode, 400);
+  assert.equal(
+    missingRes.locals.errorCode,
+    "admin_api_key_invalid_label"
+  );
+
+  const blankRes = fakeResponse();
+
+  await adminCreateApiKeyController(
+    fakeRequest({
+      session,
+      csrf: session.csrfToken,
+      body: { label: "   " },
+    }),
+    blankRes
+  );
+
+  assert.equal(blankRes.statusCode, 400);
+  assert.equal(
+    blankRes.locals.errorCode,
+    "admin_api_key_invalid_label"
+  );
+
   const labelRes = fakeResponse();
 
   await adminCreateApiKeyController(
@@ -243,6 +359,10 @@ run("rejects invalid labels and ids", async () => {
   );
 
   assert.equal(labelRes.statusCode, 400);
+  assert.equal(
+    labelRes.locals.errorCode,
+    "admin_api_key_invalid_label"
+  );
 
   const idRes = fakeResponse();
 
@@ -256,6 +376,7 @@ run("rejects invalid labels and ids", async () => {
   );
 
   assert.equal(idRes.statusCode, 400);
+  assert.equal(idRes.locals.errorCode, "admin_api_key_invalid_id");
 });
 
 run("returns 404 for an unknown API key id", async () => {
@@ -271,4 +392,5 @@ run("returns 404 for an unknown API key id", async () => {
   );
 
   assert.equal(res.statusCode, 404);
+  assert.equal(res.locals.errorCode, "admin_api_key_not_found");
 });

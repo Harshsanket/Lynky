@@ -38,11 +38,17 @@ export interface ApiKeyProjection {
 
 export class ApiKeyError extends PublicError {
   statusCode: number;
+  errorCode: string | undefined;
 
-  constructor(message: string, statusCode: number) {
+  constructor(
+    message: string,
+    statusCode: number,
+    errorCode?: string
+  ) {
     super(message);
 
     this.statusCode = statusCode;
+    this.errorCode = errorCode;
   }
 }
 
@@ -108,11 +114,23 @@ export const generateApiSecret = (): string => {
 };
 
 export const provisionApiKey = async (
-  options: { label?: string } = {}
+  options: { label: string }
 ): Promise<{ key: ApiKeyProjection; secret: string }> => {
   const secret = generateApiSecret();
   const currentMonth = getUsageMonth();
-  const label = (options.label ?? "").trim().slice(0, 64);
+  const label = (
+    typeof options.label === "string" ? options.label : ""
+  )
+    .trim()
+    .slice(0, 64);
+
+  if (!label) {
+    throw new ApiKeyError(
+      "A key name is required.",
+      400,
+      "admin_api_key_invalid_label"
+    );
+  }
 
   const key = await ApiKey.create({
     keyHash: hashApiSecret(secret),
@@ -242,6 +260,21 @@ export const setApiKeyStatus = async (
   }
 
   const key = await ApiKey.findById(keyId).lean();
+
+  return key
+    ? toProjection(key as unknown as ApiKeyProjectionInput)
+    : null;
+};
+
+/**
+ * Permanently remove a key. Works on active and disabled keys; requests that
+ * still carry the secret fail authentication afterwards (401). Admin-only —
+ * the provisioning CLI never deletes.
+ */
+export const deleteApiKey = async (
+  keyId: mongoose.Types.ObjectId | string
+): Promise<ApiKeyProjection | null> => {
+  const key = await ApiKey.findByIdAndDelete(keyId).lean();
 
   return key
     ? toProjection(key as unknown as ApiKeyProjectionInput)

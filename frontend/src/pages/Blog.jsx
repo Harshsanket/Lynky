@@ -684,6 +684,17 @@ const Blog = () => {
         </p>
 
         <p>
+          API keys are managed from the sysadmin dashboard. A key is created with
+          a required name and shown once; the dashboard can copy it or compose an
+          email containing the API base, usage endpoint, monthly limit, and a
+          link to the `/api` guide. Only the SHA-256 hash is stored, so a lost
+          secret is replaced rather than recovered. Each row exposes
+          current-month usage and allows reset, disable, re-enable, or permanent
+          deletion. Keys created before names were required render as
+          `Legacy key`.
+        </p>
+
+        <p>
           Cache headers are restricted to responses where they are safe. `/status`
           uses a five-second CDN freshness window; `/stats` uses thirty seconds;
           browser 404/410 responses are cacheable for thirty seconds and vary on

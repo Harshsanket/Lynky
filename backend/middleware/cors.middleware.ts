@@ -23,7 +23,7 @@ export const corsMiddleware = cors({
     return callback(null, false);
   },
 
-  methods: ["GET", "POST", "OPTIONS"],
+  methods: ["GET", "POST", "DELETE", "OPTIONS"],
 
   allowedHeaders: [
     "Content-Type",

@@ -20,6 +20,7 @@ import {
 } from "../service/metrics.service.js";
 import {
   ApiKeyError,
+  deleteApiKey,
   listApiKeys,
   provisionApiKey,
   resetApiKeyUsage,
@@ -82,7 +83,11 @@ const parseApiKeyId = (
   const id = Array.isArray(value) ? value[0] : value;
 
   if (!id || !API_KEY_ID.test(id)) {
-    throw new ApiKeyError("Invalid API key id.", 400);
+    throw new ApiKeyError(
+      "Invalid API key id.",
+      400,
+      "admin_api_key_invalid_id"
+    );
   }
 
   return id;
@@ -97,7 +102,9 @@ const handleAdminApiKeyError = (
   }
 
   if (error instanceof ApiKeyError) {
-    if (error.statusCode === 404) {
+    if (error.errorCode) {
+      res.locals.errorCode = error.errorCode;
+    } else if (error.statusCode === 404) {
       res.locals.errorCode = "admin_api_key_not_found";
     }
 
@@ -403,16 +410,29 @@ export const adminCreateApiKeyController = async (
 
     const rawLabel = req.body?.label;
 
-    if (rawLabel !== undefined && typeof rawLabel !== "string") {
-      throw new ApiKeyError("Label must be a string.", 400);
+    if (typeof rawLabel !== "string") {
+      throw new ApiKeyError(
+        "A key name is required.",
+        400,
+        "admin_api_key_invalid_label"
+      );
     }
 
-    const label = typeof rawLabel === "string" ? rawLabel.trim() : "";
+    const label = rawLabel.trim();
+
+    if (!label) {
+      throw new ApiKeyError(
+        "A key name is required.",
+        400,
+        "admin_api_key_invalid_label"
+      );
+    }
 
     if (label.length > 64) {
       throw new ApiKeyError(
         "Label must be 64 characters or fewer.",
-        400
+        400,
+        "admin_api_key_invalid_label"
       );
     }
 
@@ -420,7 +440,10 @@ export const adminCreateApiKeyController = async (
 
     return res.status(201).json({
       success: true,
-      data: result,
+      data: {
+        ...result,
+        apiBaseUrl: env.PUBLIC_URL.replace(/\/$/, ""),
+      },
     });
   } catch (error) {
     return handleAdminApiKeyError(res, error);
@@ -443,7 +466,11 @@ export const adminResetApiKeyUsageController = async (
     );
 
     if (!key) {
-      throw new ApiKeyError("API key not found.", 404);
+      throw new ApiKeyError(
+        "API key not found.",
+        404,
+        "admin_api_key_not_found"
+      );
     }
 
     return res.status(200).json({
@@ -471,7 +498,11 @@ const setApiKeyStatusController = (
     );
 
     if (!key) {
-      throw new ApiKeyError("API key not found.", 404);
+      throw new ApiKeyError(
+        "API key not found.",
+        404,
+        "admin_api_key_not_found"
+      );
     }
 
     return res.status(200).json({
@@ -488,3 +519,33 @@ export const adminDisableApiKeyController =
 
 export const adminEnableApiKeyController =
   setApiKeyStatusController("active");
+
+export const adminDeleteApiKeyController = async (
+  req: Request,
+  res: Response
+) => {
+  noStore(res);
+
+  try {
+    const session = await requireSession(req);
+
+    requireCsrf(session, req);
+
+    const key = await deleteApiKey(parseApiKeyId(req.params.id));
+
+    if (!key) {
+      throw new ApiKeyError(
+        "API key not found.",
+        404,
+        "admin_api_key_not_found"
+      );
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: { key },
+    });
+  } catch (error) {
+    return handleAdminApiKeyError(res, error);
+  }
+};

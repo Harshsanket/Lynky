@@ -27,7 +27,9 @@ const run = async () => {
     );
 
     for (let index = 1; index <= count; index++) {
-      const { secret } = await provisionApiKey();
+      const { secret } = await provisionApiKey({
+        label: "CLI key",
+      });
 
       created++;
 

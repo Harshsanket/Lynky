@@ -3,6 +3,7 @@ import {
   adminLogin,
   adminLogout,
   createApiKey,
+  deleteApiKey,
   getAdminApiKeys,
   getAdminBenchmarkReport,
   getAdminErrors,
@@ -11,6 +12,8 @@ import {
   resetApiKeyUsage,
   setApiKeyStatus,
 } from "../api/admin.api";
+import { buildApiKeyMailto } from "../lib/api-key-mail";
+import { SITE_URL } from "../lib/config";
 
 const cardClass =
   "rounded-lg border border-border bg-bg-alt px-4 py-3";
@@ -245,13 +248,20 @@ const SysAdmin = () => {
 
     if (keyBusy) return;
 
+    const label = keyLabel.trim();
+
+    if (!label) {
+      setKeysError("A key name is required.");
+      return;
+    }
+
     setKeyBusy(true);
     setKeysError("");
 
     try {
       const response = await createApiKey(
         session?.csrfToken ?? "",
-        keyLabel.trim()
+        label
       );
       const data = response?.data;
 
@@ -261,7 +271,8 @@ const SysAdmin = () => {
 
       setGeneratedSecret({
         secret: data.secret,
-        label: data.key?.label ?? "",
+        apiBaseUrl: data.apiBaseUrl ?? "",
+        monthlyLimit: data.key?.usage?.limit,
       });
       setSecretCopied(false);
       setKeyLabel("");
@@ -289,6 +300,19 @@ const SysAdmin = () => {
       "Unable to update API key status."
     );
 
+  const handleDelete = (id) => {
+    const confirmed = window.confirm(
+      "Delete this API key permanently? This cannot be undone."
+    );
+
+    if (!confirmed) return;
+
+    return runKeyAction(
+      () => deleteApiKey(session?.csrfToken ?? "", id),
+      "Unable to delete API key."
+    );
+  };
+
   const handleCopySecret = async () => {
     if (!generatedSecret?.secret) return;
 
@@ -302,6 +326,15 @@ const SysAdmin = () => {
       setKeysError("Unable to copy the key. Select and copy it manually.");
     }
   };
+
+  const apiKeyMail = generatedSecret
+    ? buildApiKeyMailto({
+        secret: generatedSecret.secret,
+        apiBaseUrl: generatedSecret.apiBaseUrl,
+        apiGuideUrl: `${SITE_URL}/api`,
+        monthlyLimit: generatedSecret.monthlyLimit,
+      })
+    : null;
 
   if (loading && !session) {
     return (
@@ -714,6 +747,31 @@ const SysAdmin = () => {
           </p>
         ) : null}
 
+        <form
+          onSubmit={handleGenerate}
+          className="flex flex-wrap items-end gap-2"
+        >
+          <label className="flex min-w-0 flex-1 flex-col gap-1.5">
+            <span className="font-mono text-xs text-ink-soft">
+              key name (required)
+            </span>
+            <input
+              value={keyLabel}
+              maxLength={64}
+              onChange={(event) => setKeyLabel(event.target.value)}
+              placeholder="Key name (required)"
+              className="rounded-md border border-border bg-bg-alt px-3 py-2 text-sm outline-none focus:border-ink"
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={keyBusy || !keyLabel.trim()}
+            className="rounded-md bg-ink px-4 py-2.5 text-sm font-medium text-bg-alt transition-opacity hover:opacity-90 disabled:opacity-60"
+          >
+            {keyBusy ? "working…" : "Generate key"}
+          </button>
+        </form>
+
         {generatedSecret ? (
           <div
             className="rounded-lg border p-4"
@@ -725,9 +783,7 @@ const SysAdmin = () => {
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="font-mono text-xs text-ink-soft">
-                  {generatedSecret.label
-                    ? `new key · ${generatedSecret.label}`
-                    : "new key"}
+                  new key
                 </p>
                 <code
                   className="mt-2 block break-all font-mono text-xs"
@@ -736,7 +792,7 @@ const SysAdmin = () => {
                   {generatedSecret.secret}
                 </code>
               </div>
-              <div className="flex shrink-0 gap-2">
+              <div className="flex shrink-0 flex-wrap gap-2">
                 <button
                   type="button"
                   onClick={handleCopySecret}
@@ -744,6 +800,12 @@ const SysAdmin = () => {
                 >
                   {secretCopied ? "copied" : "copy"}
                 </button>
+                <a
+                  href={apiKeyMail?.href ?? ""}
+                  className="rounded-md border border-border px-3 py-1.5 text-xs transition-colors hover:bg-bg-alt"
+                >
+                  Send by mail
+                </a>
                 <button
                   type="button"
                   onClick={() => {
@@ -757,61 +819,42 @@ const SysAdmin = () => {
               </div>
             </div>
             <p className="mt-3 text-xs text-ink-soft">
-              You won't see this again — store it now.
+              You won't see this again — store or send it now.
             </p>
           </div>
         ) : null}
-
-        <form
-          onSubmit={handleGenerate}
-          className="flex flex-wrap items-end gap-2"
-        >
-          <label className="flex min-w-0 flex-1 flex-col gap-1.5">
-            <span className="font-mono text-xs text-ink-soft">
-              label (optional)
-            </span>
-            <input
-              value={keyLabel}
-              maxLength={64}
-              onChange={(event) => setKeyLabel(event.target.value)}
-              placeholder="e.g. production scripts"
-              className="rounded-md border border-border bg-bg-alt px-3 py-2 text-sm outline-none focus:border-ink"
-            />
-          </label>
-          <button
-            type="submit"
-            disabled={keyBusy}
-            className="rounded-md bg-ink px-4 py-2.5 text-sm font-medium text-bg-alt transition-opacity hover:opacity-90 disabled:opacity-60"
-          >
-            {keyBusy ? "working…" : "Generate key"}
-          </button>
-        </form>
 
         {apiKeys.length === 0 ? (
           <p className="text-sm text-ink-soft">No API keys yet.</p>
         ) : (
           <div className="max-h-64 overflow-x-auto overflow-y-auto rounded-lg border border-border">
-            <table className="w-full min-w-[760px] text-left text-sm">
-              <thead className="sticky top-0 z-10 bg-bg-alt font-mono text-xs text-ink-soft">
+            <table className="w-full min-w-[640px] text-left text-sm">
+              <thead className="sticky top-0 z-10 font-mono text-xs text-ink-soft">
                 <tr>
-                  <th className="px-3 py-2">key</th>
-                  <th className="px-3 py-2">status</th>
-                  <th className="px-3 py-2">created</th>
-                  <th className="px-3 py-2">last used</th>
-                  <th className="px-3 py-2">usage</th>
-                  <th className="px-3 py-2">actions</th>
+                  <th className="border-b border-[var(--color-border)] bg-[var(--color-bg-alt)] px-3 py-2">key</th>
+                  <th className="border-b border-[var(--color-border)] bg-[var(--color-bg-alt)] px-3 py-2">status</th>
+                  <th className="border-b border-[var(--color-border)] bg-[var(--color-bg-alt)] px-3 py-2">created</th>
+                  <th className="border-b border-[var(--color-border)] bg-[var(--color-bg-alt)] px-3 py-2">last used</th>
+                  <th className="border-b border-[var(--color-border)] bg-[var(--color-bg-alt)] px-3 py-2">usage</th>
+                  <th className="border-b border-[var(--color-border)] bg-[var(--color-bg-alt)] px-3 py-2">actions</th>
                 </tr>
               </thead>
               <tbody>
                 {apiKeys.map((key) => (
                   <tr key={key.id} className="border-t border-border">
-                    <td className="px-3 py-2 font-mono text-xs">
-                      <span className="block">{key.label || "—"}</span>
-                      <span className="block text-ink-soft">
-                        {key.keyPrefix || "—"}
+                    <td className="px-3 py-2 text-sm">
+                      <span>{key.label || "Legacy key"}</span>
+                      <span className="font-mono text-xs text-[var(--color-ink-soft)]">
+                        {" "}· {key.keyPrefix || "—"}
                       </span>
                     </td>
-                    <td className="px-3 py-2 font-mono text-xs">
+                    <td
+                      className={`px-3 py-2 font-mono text-xs ${
+                        key.status === "disabled"
+                          ? "text-[var(--color-ink-soft)]"
+                          : ""
+                      }`}
+                    >
                       {key.status}
                     </td>
                     <td className="whitespace-nowrap px-3 py-2 font-mono text-xs">
@@ -832,28 +875,46 @@ const SysAdmin = () => {
                     </td>
                     <td className="px-3 py-2">
                       <div className="flex flex-wrap gap-2">
+                        {key.status === "active" ? (
+                          <>
+                            <button
+                              type="button"
+                              disabled={keyBusy}
+                              onClick={() => handleResetUsage(key.id)}
+                              className="rounded-md border border-border px-2 py-1 text-xs transition-colors hover:bg-bg-alt disabled:opacity-60"
+                            >
+                              Reset usage
+                            </button>
+                            <button
+                              type="button"
+                              disabled={keyBusy}
+                              onClick={() =>
+                                handleSetStatus(key.id, "disabled")
+                              }
+                              className="rounded-md border border-border px-2 py-1 text-xs transition-colors hover:bg-bg-alt disabled:opacity-60"
+                            >
+                              Disable
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={keyBusy}
+                            onClick={() =>
+                              handleSetStatus(key.id, "active")
+                            }
+                            className="rounded-md border border-border px-2 py-1 text-xs transition-colors hover:bg-bg-alt disabled:opacity-60"
+                          >
+                            Enable
+                          </button>
+                        )}
                         <button
                           type="button"
                           disabled={keyBusy}
-                          onClick={() => handleResetUsage(key.id)}
+                          onClick={() => handleDelete(key.id)}
                           className="rounded-md border border-border px-2 py-1 text-xs transition-colors hover:bg-bg-alt disabled:opacity-60"
                         >
-                          Reset usage
-                        </button>
-                        <button
-                          type="button"
-                          disabled={keyBusy}
-                          onClick={() =>
-                            handleSetStatus(
-                              key.id,
-                              key.status === "active"
-                                ? "disabled"
-                                : "active"
-                            )
-                          }
-                          className="rounded-md border border-border px-2 py-1 text-xs transition-colors hover:bg-bg-alt disabled:opacity-60"
-                        >
-                          {key.status === "active" ? "Disable" : "Enable"}
+                          Delete
                         </button>
                       </div>
                     </td>
@@ -873,13 +934,13 @@ const SysAdmin = () => {
         ) : (
           <div className="max-h-48 overflow-x-auto overflow-y-auto rounded-lg border border-border">
             <table className="w-full min-w-[640px] text-left text-sm">
-              <thead className="sticky top-0 z-10 bg-bg-alt font-mono text-xs text-ink-soft">
+              <thead className="sticky top-0 z-10 font-mono text-xs text-ink-soft">
                 <tr>
-                  <th className="px-3 py-2">time</th>
-                  <th className="px-3 py-2">route</th>
-                  <th className="px-3 py-2">status</th>
-                  <th className="px-3 py-2">code</th>
-                  <th className="px-3 py-2">request</th>
+                  <th className="border-b border-[var(--color-border)] bg-[var(--color-bg-alt)] px-3 py-2">time</th>
+                  <th className="border-b border-[var(--color-border)] bg-[var(--color-bg-alt)] px-3 py-2">route</th>
+                  <th className="border-b border-[var(--color-border)] bg-[var(--color-bg-alt)] px-3 py-2">status</th>
+                  <th className="border-b border-[var(--color-border)] bg-[var(--color-bg-alt)] px-3 py-2">code</th>
+                  <th className="border-b border-[var(--color-border)] bg-[var(--color-bg-alt)] px-3 py-2">request</th>
                 </tr>
               </thead>
               <tbody>

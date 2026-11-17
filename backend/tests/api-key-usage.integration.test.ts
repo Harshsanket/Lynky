@@ -28,6 +28,8 @@ const {
 const {
   ApiKeyError,
   decrementApiKeyUsage,
+  deleteApiKey,
+  findAndRolloverApiKey,
   incrementApiKeyUsage,
   listApiKeys,
   MONTHLY_LINK_LIMIT,
@@ -282,4 +284,76 @@ run("caps overlong labels at the service boundary", async () => {
   );
 
   assert.equal(result.key.label.length, 64);
+});
+
+run("rejects a blank key name at the service boundary", async () => {
+  await assert.rejects(
+    () => provisionApiKey({ label: "   " }),
+    (error: unknown) =>
+      error instanceof ApiKeyError &&
+      error.statusCode === 400 &&
+      error.errorCode === "admin_api_key_invalid_label"
+  );
+});
+
+run("resets usage on a disabled key without changing status", async () => {
+  const currentMonth = getUsageMonth();
+  const key = await makeKey({
+    status: "disabled",
+    monthlyUsageCount: 3,
+    usageMonth: currentMonth,
+    usageHistory: [{ month: currentMonth, count: 3 }],
+  });
+
+  const reset = await resetApiKeyUsage(key._id);
+
+  assert.equal(reset?.status, "disabled");
+  assert.equal(reset?.usage.current, 0);
+  assert.equal(reset?.usage.total12m, 0);
+
+  const stored = await ApiKey.findById(key._id).lean();
+
+  assert.equal(stored?.status, "disabled");
+  assert.equal(stored?.monthlyUsageCount, 0);
+});
+
+run("deletes a key permanently and its secret stops authenticating", async () => {
+  const { key, secret } = await provisionApiKey({
+    label: "delete me",
+  });
+
+  createdKeyIds.push(new mongoose.Types.ObjectId(key.id));
+
+  const before = await listApiKeys();
+
+  assert.ok(before.some((listed) => listed.id === key.id));
+
+  const deleted = await deleteApiKey(key.id);
+
+  assert.equal(deleted?.id, key.id);
+  assert.equal(deleted?.label, "delete me");
+  assert.equal(await ApiKey.findById(key.id).lean(), null);
+  assert.equal(
+    (await listApiKeys()).some((listed) => listed.id === key.id),
+    false
+  );
+
+  await assert.rejects(
+    () => findAndRolloverApiKey(secret),
+    (error: unknown) =>
+      error instanceof ApiKeyError && error.statusCode === 401
+  );
+});
+
+run("deletes a disabled key and returns null for an unknown id", async () => {
+  const key = await makeKey({ status: "disabled" });
+
+  const deleted = await deleteApiKey(key._id);
+
+  assert.equal(deleted?.status, "disabled");
+  assert.equal(await ApiKey.findById(key._id).lean(), null);
+  assert.equal(
+    await deleteApiKey(new mongoose.Types.ObjectId()),
+    null
+  );
 });

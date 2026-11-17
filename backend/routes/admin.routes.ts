@@ -3,6 +3,7 @@ import {
   adminApiKeysController,
   adminBenchmarkReportController,
   adminCreateApiKeyController,
+  adminDeleteApiKeyController,
   adminDisableApiKeyController,
   adminEnableApiKeyController,
   adminErrorsController,
@@ -34,5 +35,6 @@ router.post(
 );
 router.post("/api-keys/:id/disable", adminDisableApiKeyController);
 router.post("/api-keys/:id/enable", adminEnableApiKeyController);
+router.delete("/api-keys/:id", adminDeleteApiKeyController);
 
 export default router;
