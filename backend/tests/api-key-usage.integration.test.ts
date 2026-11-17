@@ -26,8 +26,14 @@ const {
   prepareUrl,
 } = await import("../service/url.service.js");
 const {
+  ApiKeyError,
   decrementApiKeyUsage,
   incrementApiKeyUsage,
+  listApiKeys,
+  MONTHLY_LINK_LIMIT,
+  provisionApiKey,
+  resetApiKeyUsage,
+  setApiKeyStatus,
 } = await import("../service/api-key.service.js");
 
 const run = testMongoUri ? test : test.skip;
@@ -148,4 +154,132 @@ run("marks duplicate shorten requests as not created", async () => {
   assert.equal(first.created, true);
   assert.equal(second.created, false);
   assert.equal(first.code, second.code);
+});
+
+
+run("provisions a labelled key with a safe projection", async () => {
+  const result = await provisionApiKey({
+    label: "  production scripts  ",
+  });
+
+  createdKeyIds.push(
+    new mongoose.Types.ObjectId(result.key.id)
+  );
+
+  assert.equal(result.secret.length > 0, true);
+  assert.equal(result.key.label, "production scripts");
+  assert.equal(result.key.keyPrefix, result.secret.slice(0, 8));
+  assert.equal(result.key.status, "active");
+  assert.equal(result.key.usage.limit, MONTHLY_LINK_LIMIT);
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(result.key, "keyHash"),
+    false
+  );
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(result.key, "secret"),
+    false
+  );
+
+  const stored = await ApiKey.findById(result.key.id).lean();
+
+  assert.equal(stored?.keyHash.length, 64);
+  assert.equal(stored?.label, "production scripts");
+  assert.equal(stored?.keyPrefix, result.secret.slice(0, 8));
+});
+
+run("lists keys without key hashes or secrets", async () => {
+  const result = await provisionApiKey({ label: "list me" });
+
+  createdKeyIds.push(
+    new mongoose.Types.ObjectId(result.key.id)
+  );
+
+  const keys = await listApiKeys();
+  const listed = keys.find((key) => key.id === result.key.id);
+
+  assert.ok(listed);
+  assert.equal(listed?.label, "list me");
+  assert.equal(listed?.keyPrefix, result.secret.slice(0, 8));
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(listed ?? {}, "keyHash"),
+    false
+  );
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(listed ?? {}, "secret"),
+    false
+  );
+});
+
+run("resets current-month usage while preserving prior months", async () => {
+  const currentMonth = getUsageMonth();
+  const key = await makeKey({
+    label: "reset me",
+    monthlyUsageCount: 7,
+    usageMonth: currentMonth,
+    usageHistory: [
+      { month: "2000-01", count: 4 },
+      { month: currentMonth, count: 7 },
+    ],
+  });
+
+  const reset = await resetApiKeyUsage(key._id);
+
+  assert.ok(reset);
+  assert.equal(reset?.usage.current, 0);
+  assert.equal(reset?.usage.month, currentMonth);
+  assert.equal(reset?.usage.total12m, 4);
+
+  const stored = await ApiKey.findById(key._id).lean();
+
+  assert.equal(stored?.usageMonth, currentMonth);
+  assert.equal(
+    stored?.usageHistory.find((entry) => entry.month === "2000-01")
+      ?.count,
+    4
+  );
+  assert.equal(
+    stored?.usageHistory.find((entry) => entry.month === currentMonth)
+      ?.count,
+    0
+  );
+});
+
+run("disables and re-enables a key", async () => {
+  const key = await makeKey({ label: "status me" });
+
+  const disabled = await setApiKeyStatus(key._id, "disabled");
+
+  assert.equal(disabled?.status, "disabled");
+  assert.equal(await incrementApiKeyUsage(key._id), false);
+
+  const enabled = await setApiKeyStatus(key._id, "active");
+
+  assert.equal(enabled?.status, "active");
+  assert.equal(await incrementApiKeyUsage(key._id), true);
+});
+
+run("rejects an invalid status transition", async () => {
+  const key = await makeKey();
+
+  await assert.rejects(
+    () =>
+      setApiKeyStatus(
+        key._id,
+        "paused" as unknown as "active"
+      ),
+    (error: unknown) =>
+      error instanceof ApiKeyError && error.statusCode === 400
+  );
+});
+
+run("caps overlong labels at the service boundary", async () => {
+  const result = await provisionApiKey({
+    label: "x".repeat(80),
+  });
+
+  createdKeyIds.push(
+    new mongoose.Types.ObjectId(result.key.id)
+  );
+
+  assert.equal(result.key.label.length, 64);
 });

@@ -2,10 +2,14 @@ import { useCallback, useEffect, useState } from "react";
 import {
   adminLogin,
   adminLogout,
+  createApiKey,
+  getAdminApiKeys,
   getAdminBenchmarkReport,
   getAdminErrors,
   getAdminMetrics,
   getAdminSession,
+  resetApiKeyUsage,
+  setApiKeyStatus,
 } from "../api/admin.api";
 
 const cardClass =
@@ -35,6 +39,9 @@ const formatMs = (value) =>
   typeof value === "number" && Number.isFinite(value)
     ? `${value.toFixed(2)} ms`
     : "—";
+
+const formatWhen = (value) =>
+  value ? new Date(value).toLocaleString() : "—";
 
 const Sparkline = ({ values, color = "var(--color-clean)" }) => {
   if (!Array.isArray(values) || values.length < 2) {
@@ -96,11 +103,17 @@ const SysAdmin = () => {
   const [errors, setErrors] = useState([]);
   const [benchmarkReport, setBenchmarkReport] = useState(null);
   const [benchmarkAvailable, setBenchmarkAvailable] = useState(false);
+  const [apiKeys, setApiKeys] = useState([]);
+  const [keysError, setKeysError] = useState("");
+  const [keyLabel, setKeyLabel] = useState("");
+  const [generatedSecret, setGeneratedSecret] = useState(null);
+  const [secretCopied, setSecretCopied] = useState(false);
+  const [keyBusy, setKeyBusy] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
   const loadDashboard = useCallback(async () => {
-    const [metricsResponse, errorsResponse, reportResult] =
+    const [metricsResponse, errorsResponse, reportResult, keysResult] =
       await Promise.all([
         getAdminMetrics(),
         getAdminErrors(100),
@@ -110,12 +123,21 @@ const SysAdmin = () => {
             data: response?.data ?? null,
           }))
           .catch(() => ({ available: false, data: null })),
+        getAdminApiKeys()
+          .then((response) => ({ available: true, data: response?.data ?? null }))
+          .catch(() => ({ available: false, data: null })),
       ]);
 
     setMetrics(metricsResponse?.data ?? null);
     setErrors(Array.isArray(errorsResponse?.data) ? errorsResponse.data : []);
     setBenchmarkAvailable(reportResult.available);
     setBenchmarkReport(reportResult.data);
+    setApiKeys(
+      Array.isArray(keysResult.data?.keys) ? keysResult.data.keys : []
+    );
+    setKeysError(
+      keysResult.available ? "" : "Unable to load API keys."
+    );
   }, []);
 
   useEffect(() => {
@@ -189,8 +211,95 @@ const SysAdmin = () => {
       setErrors([]);
       setBenchmarkReport(null);
       setBenchmarkAvailable(false);
+      setApiKeys([]);
+      setGeneratedSecret(null);
+      setSecretCopied(false);
+      setKeysError("");
     } catch (logoutError) {
       setError(logoutError.message);
+    }
+  };
+
+  const runKeyAction = async (action, fallback) => {
+    if (keyBusy) return;
+
+    setKeyBusy(true);
+    setKeysError("");
+
+    try {
+      await action();
+      await loadDashboard();
+    } catch (actionError) {
+      setKeysError(
+        actionError?.data?.message ||
+          actionError?.message ||
+          fallback
+      );
+    } finally {
+      setKeyBusy(false);
+    }
+  };
+
+  const handleGenerate = async (event) => {
+    event.preventDefault();
+
+    if (keyBusy) return;
+
+    setKeyBusy(true);
+    setKeysError("");
+
+    try {
+      const response = await createApiKey(
+        session?.csrfToken ?? "",
+        keyLabel.trim()
+      );
+      const data = response?.data;
+
+      if (!data?.secret) {
+        throw new Error("Key creation returned no secret.");
+      }
+
+      setGeneratedSecret({
+        secret: data.secret,
+        label: data.key?.label ?? "",
+      });
+      setSecretCopied(false);
+      setKeyLabel("");
+      await loadDashboard();
+    } catch (generateError) {
+      setKeysError(
+        generateError?.data?.message ||
+          generateError?.message ||
+          "Unable to generate API key."
+      );
+    } finally {
+      setKeyBusy(false);
+    }
+  };
+
+  const handleResetUsage = (id) =>
+    runKeyAction(
+      () => resetApiKeyUsage(session?.csrfToken ?? "", id),
+      "Unable to reset API key usage."
+    );
+
+  const handleSetStatus = (id, status) =>
+    runKeyAction(
+      () => setApiKeyStatus(session?.csrfToken ?? "", id, status),
+      "Unable to update API key status."
+    );
+
+  const handleCopySecret = async () => {
+    if (!generatedSecret?.secret) return;
+
+    try {
+      await navigator.clipboard.writeText(generatedSecret.secret);
+      setSecretCopied(true);
+      setKeysError("");
+      setTimeout(() => setSecretCopied(false), 1500);
+    } catch {
+      setSecretCopied(false);
+      setKeysError("Unable to copy the key. Select and copy it manually.");
     }
   };
 
@@ -592,6 +701,166 @@ const SysAdmin = () => {
               <p className="font-mono text-xs text-ink-soft">RSS</p>
               <Sparkline values={metricRssValues} color="var(--color-clean)" />
             </div>
+          </div>
+        )}
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="font-display text-xl">API keys</h2>
+
+        {keysError ? (
+          <p role="alert" className="text-sm text-dirty">
+            {keysError}
+          </p>
+        ) : null}
+
+        {generatedSecret ? (
+          <div
+            className="rounded-lg border p-4"
+            style={{
+              borderColor: "var(--color-clean)",
+              backgroundColor: "var(--color-clean-soft)",
+            }}
+          >
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-mono text-xs text-ink-soft">
+                  {generatedSecret.label
+                    ? `new key · ${generatedSecret.label}`
+                    : "new key"}
+                </p>
+                <code
+                  className="mt-2 block break-all font-mono text-xs"
+                  style={{ color: "var(--color-ink)" }}
+                >
+                  {generatedSecret.secret}
+                </code>
+              </div>
+              <div className="flex shrink-0 gap-2">
+                <button
+                  type="button"
+                  onClick={handleCopySecret}
+                  className="rounded-md border border-border px-3 py-1.5 text-xs transition-colors hover:bg-bg-alt"
+                >
+                  {secretCopied ? "copied" : "copy"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setGeneratedSecret(null);
+                    setSecretCopied(false);
+                  }}
+                  className="rounded-md border border-border px-3 py-1.5 text-xs transition-colors hover:bg-bg-alt"
+                >
+                  done
+                </button>
+              </div>
+            </div>
+            <p className="mt-3 text-xs text-ink-soft">
+              You won't see this again — store it now.
+            </p>
+          </div>
+        ) : null}
+
+        <form
+          onSubmit={handleGenerate}
+          className="flex flex-wrap items-end gap-2"
+        >
+          <label className="flex min-w-0 flex-1 flex-col gap-1.5">
+            <span className="font-mono text-xs text-ink-soft">
+              label (optional)
+            </span>
+            <input
+              value={keyLabel}
+              maxLength={64}
+              onChange={(event) => setKeyLabel(event.target.value)}
+              placeholder="e.g. production scripts"
+              className="rounded-md border border-border bg-bg-alt px-3 py-2 text-sm outline-none focus:border-ink"
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={keyBusy}
+            className="rounded-md bg-ink px-4 py-2.5 text-sm font-medium text-bg-alt transition-opacity hover:opacity-90 disabled:opacity-60"
+          >
+            {keyBusy ? "working…" : "Generate key"}
+          </button>
+        </form>
+
+        {apiKeys.length === 0 ? (
+          <p className="text-sm text-ink-soft">No API keys yet.</p>
+        ) : (
+          <div className="max-h-64 overflow-x-auto overflow-y-auto rounded-lg border border-border">
+            <table className="w-full min-w-[760px] text-left text-sm">
+              <thead className="sticky top-0 z-10 bg-bg-alt font-mono text-xs text-ink-soft">
+                <tr>
+                  <th className="px-3 py-2">key</th>
+                  <th className="px-3 py-2">status</th>
+                  <th className="px-3 py-2">created</th>
+                  <th className="px-3 py-2">last used</th>
+                  <th className="px-3 py-2">usage</th>
+                  <th className="px-3 py-2">actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {apiKeys.map((key) => (
+                  <tr key={key.id} className="border-t border-border">
+                    <td className="px-3 py-2 font-mono text-xs">
+                      <span className="block">{key.label || "—"}</span>
+                      <span className="block text-ink-soft">
+                        {key.keyPrefix || "—"}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 font-mono text-xs">
+                      {key.status}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2 font-mono text-xs">
+                      {formatWhen(key.createdAt)}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2 font-mono text-xs">
+                      {formatWhen(key.lastUsedAt)}
+                    </td>
+                    <td className="px-3 py-2 font-mono text-xs">
+                      <span className="block">
+                        {formatNumber(key.usage?.current)} /{" "}
+                        {formatNumber(key.usage?.limit)}
+                      </span>
+                      <span className="block text-ink-soft">
+                        {key.usage?.month ?? "—"} · total{" "}
+                        {formatNumber(key.usage?.total12m)}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          disabled={keyBusy}
+                          onClick={() => handleResetUsage(key.id)}
+                          className="rounded-md border border-border px-2 py-1 text-xs transition-colors hover:bg-bg-alt disabled:opacity-60"
+                        >
+                          Reset usage
+                        </button>
+                        <button
+                          type="button"
+                          disabled={keyBusy}
+                          onClick={() =>
+                            handleSetStatus(
+                              key.id,
+                              key.status === "active"
+                                ? "disabled"
+                                : "active"
+                            )
+                          }
+                          className="rounded-md border border-border px-2 py-1 text-xs transition-colors hover:bg-bg-alt disabled:opacity-60"
+                        >
+                          {key.status === "active" ? "Disable" : "Enable"}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </section>

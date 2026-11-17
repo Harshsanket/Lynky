@@ -14,6 +14,9 @@ const {
   generateApiSecret,
   isValidApiSecret,
 } = await import("../service/api-key.service.js");
+const { deriveKeyPrefix } = await import(
+  "../models/api-key.models.js"
+);
 const { env } = await import("../src/config/env.js");
 
 const keyOfLength = (length: number, character = "A"): string =>
@@ -100,4 +103,13 @@ test("the validator follows API_KEY_LENGTH when it changes", () => {
   } finally {
     env.API_KEY_LENGTH = previous;
   }
+});
+
+
+test("derives the display prefix from the secret only", () => {
+  const secret = generateApiSecret();
+
+  assert.equal(deriveKeyPrefix(secret), secret.slice(0, 8));
+  assert.equal(deriveKeyPrefix("abcdefghij"), "abcdefgh");
+  assert.equal(deriveKeyPrefix(""), "");
 });

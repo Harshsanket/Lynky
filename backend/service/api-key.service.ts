@@ -4,8 +4,10 @@ import { env } from "../src/config/env.js";
 import { PublicError } from "./public-error.service.js";
 import {
   ApiKey,
+  deriveKeyPrefix,
   getUsageMonth,
   MAX_USAGE_HISTORY_MONTHS,
+  type IUsageHistoryEntry,
 } from "../models/api-key.models.js";
 
 /**
@@ -18,6 +20,21 @@ import {
 
 /** Monthly link quota per API key (configurable via env). */
 export const MONTHLY_LINK_LIMIT = env.API_KEY_MONTHLY_LIMIT;
+
+export interface ApiKeyProjection {
+  id: string;
+  label: string;
+  keyPrefix: string;
+  status: "active" | "disabled";
+  usage: {
+    month: string;
+    current: number;
+    limit: number;
+    total12m: number;
+  };
+  lastUsedAt: Date | null;
+  createdAt: Date | null;
+}
 
 export class ApiKeyError extends PublicError {
   statusCode: number;
@@ -90,19 +107,145 @@ export const generateApiSecret = (): string => {
   return secret;
 };
 
-export const provisionApiKey = async (): Promise<string> => {
+export const provisionApiKey = async (
+  options: { label?: string } = {}
+): Promise<{ key: ApiKeyProjection; secret: string }> => {
   const secret = generateApiSecret();
   const currentMonth = getUsageMonth();
+  const label = (options.label ?? "").trim().slice(0, 64);
 
-  await ApiKey.create({
+  const key = await ApiKey.create({
     keyHash: hashApiSecret(secret),
+    label,
+    keyPrefix: deriveKeyPrefix(secret),
     status: "active",
     monthlyUsageCount: 0,
     usageMonth: currentMonth,
     usageHistory: [{ month: currentMonth, count: 0 }],
   });
 
-  return secret;
+  return {
+    key: toProjection(key as unknown as ApiKeyProjectionInput),
+    secret,
+  };
+};
+
+type ApiKeyProjectionInput = {
+  _id: mongoose.Types.ObjectId;
+  label?: string | null;
+  keyPrefix?: string | null;
+  status: "active" | "disabled";
+  monthlyUsageCount: number;
+  usageMonth: string;
+  usageHistory?: IUsageHistoryEntry[];
+  lastUsedAt?: Date | null;
+  createdAt?: Date | null;
+};
+
+const toProjection = (key: ApiKeyProjectionInput): ApiKeyProjection => {
+  const total12m = (key.usageHistory ?? []).reduce(
+    (sum, entry) => sum + (entry.count ?? 0),
+    0
+  );
+
+  return {
+    id: String(key._id),
+    label: key.label ?? "",
+    keyPrefix: key.keyPrefix ?? "",
+    status: key.status,
+    usage: {
+      month: key.usageMonth,
+      current: key.monthlyUsageCount,
+      limit: MONTHLY_LINK_LIMIT,
+      total12m,
+    },
+    lastUsedAt: key.lastUsedAt ?? null,
+    createdAt: key.createdAt ?? null,
+  };
+};
+
+export const listApiKeys = async (): Promise<ApiKeyProjection[]> => {
+  const keys = await ApiKey.find(
+    {},
+    "label keyPrefix status monthlyUsageCount usageMonth usageHistory lastUsedAt createdAt"
+  )
+    .sort({ createdAt: -1 })
+    .lean();
+
+  return keys.map((key) =>
+    toProjection(key as unknown as ApiKeyProjectionInput)
+  );
+};
+
+export const resetApiKeyUsage = async (
+  keyId: mongoose.Types.ObjectId | string
+): Promise<ApiKeyProjection | null> => {
+  const currentMonth = getUsageMonth();
+
+  const result = await ApiKey.updateOne(
+    { _id: keyId },
+    [
+      {
+        $set: {
+          monthlyUsageCount: 0,
+          usageHistory: {
+            $slice: [
+              {
+                $concatArrays: [
+                  {
+                    $filter: {
+                      input: { $ifNull: ["$usageHistory", []] },
+                      as: "entry",
+                      cond: {
+                        $ne: ["$$entry.month", currentMonth],
+                      },
+                    },
+                  },
+                  [{ month: currentMonth, count: 0 }],
+                ],
+              },
+              -MAX_USAGE_HISTORY_MONTHS,
+            ],
+          },
+        },
+      },
+    ],
+    { updatePipeline: true }
+  );
+
+  if (result.matchedCount === 0) {
+    return null;
+  }
+
+  const key = await ApiKey.findById(keyId).lean();
+
+  return key
+    ? toProjection(key as unknown as ApiKeyProjectionInput)
+    : null;
+};
+
+export const setApiKeyStatus = async (
+  keyId: mongoose.Types.ObjectId | string,
+  status: "active" | "disabled"
+): Promise<ApiKeyProjection | null> => {
+  if (status !== "active" && status !== "disabled") {
+    throw new ApiKeyError("Status must be active or disabled.", 400);
+  }
+
+  const result = await ApiKey.updateOne(
+    { _id: keyId },
+    { $set: { status } }
+  );
+
+  if (result.matchedCount === 0) {
+    return null;
+  }
+
+  const key = await ApiKey.findById(keyId).lean();
+
+  return key
+    ? toProjection(key as unknown as ApiKeyProjectionInput)
+    : null;
 };
 
 const trimUsageHistory = (

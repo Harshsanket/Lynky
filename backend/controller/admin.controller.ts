@@ -18,6 +18,13 @@ import {
   markRequestMetric,
   setMetricErrorCode,
 } from "../service/metrics.service.js";
+import {
+  ApiKeyError,
+  listApiKeys,
+  provisionApiKey,
+  resetApiKeyUsage,
+  setApiKeyStatus,
+} from "../service/api-key.service.js";
 import { getLatestTestReport } from "../service/test-report.service.js";
 import { logError } from "../service/logger.js";
 import type { IAdminSession } from "../models/admin-session.models.js";
@@ -65,6 +72,54 @@ const requireCsrf = (
   ) {
     throw new AdminAuthError("Invalid request.", 403, "csrf_failed");
   }
+};
+
+const API_KEY_ID = /^[a-f0-9]{24}$/i;
+
+const parseApiKeyId = (
+  value: string | string[] | undefined
+): string => {
+  const id = Array.isArray(value) ? value[0] : value;
+
+  if (!id || !API_KEY_ID.test(id)) {
+    throw new ApiKeyError("Invalid API key id.", 400);
+  }
+
+  return id;
+};
+
+const handleAdminApiKeyError = (
+  res: Response,
+  error: unknown
+): Response => {
+  if (error instanceof AdminAuthError) {
+    return sendAuthError(res, error);
+  }
+
+  if (error instanceof ApiKeyError) {
+    if (error.statusCode === 404) {
+      res.locals.errorCode = "admin_api_key_not_found";
+    }
+
+    return res.status(error.statusCode).json({
+      success: false,
+      message: error.message,
+    });
+  }
+
+  setMetricErrorCode(
+    res,
+    "admin_api_key_error",
+    "API keys are unavailable."
+  );
+  logError("admin_api_key_error", error, {
+    errorCode: "admin_api_key_error",
+  });
+
+  return res.status(503).json({
+    success: false,
+    message: "API keys are unavailable.",
+  });
 };
 
 export const adminLoginController = async (
@@ -315,3 +370,121 @@ export const adminErrorsController = async (
     });
   }
 };
+
+export const adminApiKeysController = async (
+  req: Request,
+  res: Response
+) => {
+  noStore(res);
+
+  try {
+    await requireSession(req);
+    const keys = await listApiKeys();
+
+    return res.status(200).json({
+      success: true,
+      data: { keys },
+    });
+  } catch (error) {
+    return handleAdminApiKeyError(res, error);
+  }
+};
+
+export const adminCreateApiKeyController = async (
+  req: Request,
+  res: Response
+) => {
+  noStore(res);
+
+  try {
+    const session = await requireSession(req);
+
+    requireCsrf(session, req);
+
+    const rawLabel = req.body?.label;
+
+    if (rawLabel !== undefined && typeof rawLabel !== "string") {
+      throw new ApiKeyError("Label must be a string.", 400);
+    }
+
+    const label = typeof rawLabel === "string" ? rawLabel.trim() : "";
+
+    if (label.length > 64) {
+      throw new ApiKeyError(
+        "Label must be 64 characters or fewer.",
+        400
+      );
+    }
+
+    const result = await provisionApiKey({ label });
+
+    return res.status(201).json({
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    return handleAdminApiKeyError(res, error);
+  }
+};
+
+export const adminResetApiKeyUsageController = async (
+  req: Request,
+  res: Response
+) => {
+  noStore(res);
+
+  try {
+    const session = await requireSession(req);
+
+    requireCsrf(session, req);
+
+    const key = await resetApiKeyUsage(
+      parseApiKeyId(req.params.id)
+    );
+
+    if (!key) {
+      throw new ApiKeyError("API key not found.", 404);
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: { key },
+    });
+  } catch (error) {
+    return handleAdminApiKeyError(res, error);
+  }
+};
+
+const setApiKeyStatusController = (
+  status: "active" | "disabled"
+) => async (req: Request, res: Response) => {
+  noStore(res);
+
+  try {
+    const session = await requireSession(req);
+
+    requireCsrf(session, req);
+
+    const key = await setApiKeyStatus(
+      parseApiKeyId(req.params.id),
+      status
+    );
+
+    if (!key) {
+      throw new ApiKeyError("API key not found.", 404);
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: { key },
+    });
+  } catch (error) {
+    return handleAdminApiKeyError(res, error);
+  }
+};
+
+export const adminDisableApiKeyController =
+  setApiKeyStatusController("disabled");
+
+export const adminEnableApiKeyController =
+  setApiKeyStatusController("active");

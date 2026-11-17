@@ -87,7 +87,9 @@ Backend values mirror `backend/.env.example`; frontend values mirror `frontend/.
 ### Sysadmin
 
 The Mongo-session dashboard is available whenever both credentials below are
-set; there is no separate enable flag.
+set; there is no separate enable flag. API keys can be generated, inspected,
+and reset from the sysadmin dashboard; secrets are shown once and only hashes
+are stored.
 
 | Variable | Example | Meaning |
 |---|---|---|

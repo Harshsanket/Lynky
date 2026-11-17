@@ -34,13 +34,22 @@ export interface IUsageHistoryEntry {
 export interface IApiKey extends Document {
   _id: mongoose.Types.ObjectId;
   keyHash: string;
+  label: string;
+  keyPrefix: string;
   status: "active" | "disabled";
   monthlyUsageCount: number;
   usageMonth: string;
   usageHistory: IUsageHistoryEntry[];
+  /** Always null in v1: there is no User model yet. */
   owner: mongoose.Types.ObjectId | null;
   lastUsedAt: Date | null;
+  createdAt?: Date;
+  updatedAt?: Date;
 }
+
+/** First 8 secret characters; safe to display, unlike the hash. */
+export const deriveKeyPrefix = (secret: string): string =>
+  secret.slice(0, 8);
 
 const apiKeySchema = new Schema<IApiKey>(
   {
@@ -49,6 +58,18 @@ const apiKeySchema = new Schema<IApiKey>(
       required: true,
       unique: true,
       index: true,
+    },
+
+    label: {
+      type: String,
+      default: "",
+      trim: true,
+      maxlength: 64,
+    },
+
+    keyPrefix: {
+      type: String,
+      default: "",
     },
 
     status: {
@@ -84,6 +105,7 @@ const apiKeySchema = new Schema<IApiKey>(
       default: [],
     },
 
+    // No User model exists in v1; this always stays null.
     owner: {
       type: Schema.Types.ObjectId,
       ref: "User",
