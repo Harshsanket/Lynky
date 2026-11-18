@@ -15,6 +15,94 @@ export type CachePipelineCommand =
   | { type: "expire"; key: string; ttlSeconds: number }
   | { type: "del"; key: string };
 
+/**
+ * Fixed field whitelist for the per-minute metric hash. Anything outside this
+ * set is rejected before Redis is touched.
+ */
+export const MINUTE_METRIC_FIELDS = [
+  "requests",
+  "latencySum",
+  "latencyCount",
+  "success",
+  "failed",
+  "status4xx",
+  "status5xx",
+  "status429",
+  "errorCount",
+  "cacheHit",
+  "cacheMiss",
+  "redisHit",
+  "redisMiss",
+  "mongoCalls",
+  "redisCalls",
+  "authFailures",
+  "shortCodeExhausted",
+] as const;
+
+export type MinuteMetricField = (typeof MINUTE_METRIC_FIELDS)[number];
+
+export interface RecordMinuteMetricsInput {
+  key: string;
+  pendingKey: string;
+  routesKey: string;
+  ttlSeconds: number;
+  epoch: string;
+  route: string;
+  durationMs: number;
+  fields: Record<string, number>;
+}
+
+const MINUTE_METRIC_FIELD_SET = new Set<string>(
+  MINUTE_METRIC_FIELDS
+);
+
+/** Validate a minute-metric write before touching Redis. */
+export const validateMinuteMetricsInput = (
+  input: RecordMinuteMetricsInput
+): void => {
+  if (
+    !input ||
+    typeof input.key !== "string" ||
+    !input.key ||
+    typeof input.pendingKey !== "string" ||
+    !input.pendingKey ||
+    typeof input.routesKey !== "string" ||
+    !input.routesKey ||
+    typeof input.epoch !== "string" ||
+    !input.epoch ||
+    typeof input.route !== "string" ||
+    !input.route
+  ) {
+    throw new Error("invalid minute metric key");
+  }
+
+  if (
+    !Number.isInteger(input.ttlSeconds) ||
+    input.ttlSeconds <= 0
+  ) {
+    throw new Error("invalid minute metric ttl");
+  }
+
+  if (
+    !Number.isInteger(input.durationMs) ||
+    input.durationMs < 0
+  ) {
+    throw new Error("invalid minute metric duration");
+  }
+
+  for (const [field, delta] of Object.entries(
+    input.fields ?? {}
+  )) {
+    if (!MINUTE_METRIC_FIELD_SET.has(field)) {
+      throw new Error(`unexpected minute metric field: ${field}`);
+    }
+
+    if (!Number.isInteger(delta) || delta <= 0) {
+      throw new Error(`invalid minute metric delta: ${field}`);
+    }
+  }
+};
+
 export interface CacheStore {
   get(key: string): Promise<string | null>;
   set(key: string, value: string, ttlSeconds?: number): Promise<void>;
@@ -37,11 +125,27 @@ export interface CacheStore {
   sAdd(key: string, member: string): Promise<void>;
   sMembers(key: string): Promise<string[]>;
   sRem(key: string, member: string): Promise<void>;
+  recordMinuteMetrics(
+    input: RecordMinuteMetricsInput
+  ): Promise<void>;
   pipeline(commands: CachePipelineCommand[]): Promise<void>;
   redirectPreflight(
     rateLimitKey: string,
     linkKey: string
   ): Promise<{ count: number; cachedRaw: string | null }>;
+}
+
+export interface MetricKeyTtl {
+  key: string;
+  ttl: number;
+}
+
+/** Maintenance-only surface; unavailable on the memory fallback. */
+export interface MetricMaintenanceStore {
+  listOrphanedMetricKeys(
+    pattern: string
+  ): Promise<MetricKeyTtl[]>;
+  deleteOrphanedMetricKeys(pattern: string): Promise<number>;
 }
 
 interface MemoryEntry {
@@ -374,6 +478,48 @@ export class MemoryCacheStore implements CacheStore {
     }
   }
 
+  async recordMinuteMetrics(
+    input: RecordMinuteMetricsInput
+  ): Promise<void> {
+    validateMinuteMetricsInput(input);
+
+    for (const [field, delta] of Object.entries(input.fields)) {
+      await this.hIncrBy(input.key, field, delta);
+    }
+
+    const existing = await this.hGetAll(input.key);
+    const currentMin = Number(existing.minMs ?? 0);
+    const currentMax = Number(existing.maxMs ?? 0);
+
+    if (
+      existing.minMs === undefined ||
+      input.durationMs < currentMin
+    ) {
+      await this.hSet(
+        input.key,
+        "minMs",
+        String(input.durationMs)
+      );
+    }
+
+    if (
+      existing.maxMs === undefined ||
+      input.durationMs > currentMax
+    ) {
+      await this.hSet(
+        input.key,
+        "maxMs",
+        String(input.durationMs)
+      );
+    }
+
+    await this.expire(input.key, input.ttlSeconds);
+    await this.sAdd(input.pendingKey, input.epoch);
+    await this.expire(input.pendingKey, input.ttlSeconds);
+    await this.sAdd(input.routesKey, input.route);
+    await this.expire(input.routesKey, input.ttlSeconds);
+  }
+
   async pipeline(commands: CachePipelineCommand[]): Promise<void> {
     for (const command of commands) {
       if (command.type === "hSet") {
@@ -399,12 +545,60 @@ export class MemoryCacheStore implements CacheStore {
   }
 }
 
+const LIST_ORPHANED_METRIC_KEYS_SCRIPT =
+  "local keys = redis.call('KEYS', ARGV[1]); " +
+  "local out = {}; " +
+  "for i = 1, #keys do " +
+  "local ttl = redis.call('TTL', keys[i]); " +
+  "if ttl == -1 then " +
+  "table.insert(out, keys[i]); " +
+  "table.insert(out, tostring(ttl)); " +
+  "end; " +
+  "end; " +
+  "return out";
+
+const DELETE_ORPHANED_METRIC_KEYS_SCRIPT =
+  "local keys = redis.call('KEYS', ARGV[1]); " +
+  "local deleted = 0; " +
+  "for i = 1, #keys do " +
+  "if redis.call('TTL', keys[i]) == -1 then " +
+  "redis.call('DEL', keys[i]); " +
+  "deleted = deleted + 1; " +
+  "end; " +
+  "end; " +
+  "return deleted";
+
+const RECORD_MINUTE_METRICS_SCRIPT =
+  "local ttl = tonumber(ARGV[1]); " +
+  "local epoch = ARGV[2]; " +
+  "local route = ARGV[3]; " +
+  "local duration = tonumber(ARGV[4]); " +
+  "for i = 5, #ARGV, 2 do " +
+  "redis.call('HINCRBY', KEYS[1], ARGV[i], ARGV[i + 1]); " +
+  "end; " +
+  "local min = redis.call('HGET', KEYS[1], 'minMs'); " +
+  "local max = redis.call('HGET', KEYS[1], 'maxMs'); " +
+  "if not min or duration < tonumber(min) then " +
+  "redis.call('HSET', KEYS[1], 'minMs', duration); " +
+  "end; " +
+  "if not max or duration > tonumber(max) then " +
+  "redis.call('HSET', KEYS[1], 'maxMs', duration); " +
+  "end; " +
+  "redis.call('EXPIRE', KEYS[1], ttl); " +
+  "redis.call('SADD', KEYS[2], epoch); " +
+  "redis.call('EXPIRE', KEYS[2], ttl); " +
+  "redis.call('SADD', KEYS[3], route); " +
+  "redis.call('EXPIRE', KEYS[3], ttl); " +
+  "return 1";
+
 /**
  * Upstash REST store. Disabling automatic deserialization keeps all values as
  * the strings the cache contract expects; HGETALL therefore returns a flat
  * [field, value, ...] array that is normalized below.
  */
-class UpstashCacheStore implements CacheStore {
+class UpstashCacheStore
+  implements CacheStore, MetricMaintenanceStore
+{
   constructor(private readonly client: Redis) {}
 
   async get(key: string): Promise<string | null> {
@@ -566,6 +760,64 @@ class UpstashCacheStore implements CacheStore {
     await this.client.srem(prefixed(key), member);
   }
 
+  async recordMinuteMetrics(
+    input: RecordMinuteMetricsInput
+  ): Promise<void> {
+    validateMinuteMetricsInput(input);
+
+    const args = [
+      String(input.ttlSeconds),
+      input.epoch,
+      input.route,
+      String(input.durationMs),
+    ];
+
+    for (const [field, delta] of Object.entries(input.fields)) {
+      args.push(field, String(delta));
+    }
+
+    await this.client.eval(
+      RECORD_MINUTE_METRICS_SCRIPT,
+      [
+        prefixed(input.key),
+        prefixed(input.pendingKey),
+        prefixed(input.routesKey),
+      ],
+      args
+    );
+  }
+
+  async listOrphanedMetricKeys(
+    pattern: string
+  ): Promise<MetricKeyTtl[]> {
+    const raw = await this.client.eval(
+      LIST_ORPHANED_METRIC_KEYS_SCRIPT,
+      [],
+      [pattern]
+    );
+    const flat = Array.isArray(raw) ? raw : [];
+    const result: MetricKeyTtl[] = [];
+
+    for (let index = 0; index + 1 < flat.length; index += 2) {
+      result.push({
+        key: String(flat[index]),
+        ttl: Number(flat[index + 1]),
+      });
+    }
+
+    return result;
+  }
+
+  async deleteOrphanedMetricKeys(pattern: string): Promise<number> {
+    const raw = await this.client.eval(
+      DELETE_ORPHANED_METRIC_KEYS_SCRIPT,
+      [],
+      [pattern]
+    );
+
+    return Number(raw);
+  }
+
   async pipeline(commands: CachePipelineCommand[]): Promise<void> {
     if (commands.length === 0) {
       return;
@@ -642,6 +894,14 @@ export const getCacheStore = (): CacheStore => {
   store ??= createCacheStore();
   return store;
 };
+
+/** Maintenance-only: returns null on the local memory fallback. */
+export const getMetricMaintenanceStore =
+  (): MetricMaintenanceStore | null => {
+    const cache = getCacheStore();
+
+    return cache instanceof UpstashCacheStore ? cache : null;
+  };
 
 export const getCacheStatus = (): {
   configured: boolean;

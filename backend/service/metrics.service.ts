@@ -326,50 +326,47 @@ export const recordRequestMetrics = async (
   try {
     const store = getCacheStore();
     const key = minuteKey(epoch, route);
+    const roundedDuration = Math.round(durationMs);
+    const fields: Record<string, number> = {
+      requests: 1,
+      latencyCount: 1,
+    };
 
-    await store.hIncrBy(key, "requests", 1);
-    await store.hIncrBy(key, "latencySum", Math.round(durationMs));
-    await store.hIncrBy(key, "latencyCount", 1);
+    if (roundedDuration > 0) {
+      fields.latencySum = roundedDuration;
+    }
 
     if (res.statusCode >= 200 && res.statusCode < 400) {
-      await store.hIncrBy(key, "success", 1);
+      fields.success = 1;
     } else {
-      await store.hIncrBy(key, "failed", 1);
+      fields.failed = 1;
     }
 
     if (res.statusCode >= 500) {
-      await store.hIncrBy(key, "status5xx", 1);
-      await store.hIncrBy(key, "errorCount", 1);
+      fields.status5xx = 1;
+      fields.errorCount = 1;
     } else if (res.statusCode === 429) {
-      await store.hIncrBy(key, "status429", 1);
+      fields.status429 = 1;
     } else if (res.statusCode >= 400) {
-      await store.hIncrBy(key, "status4xx", 1);
+      fields.status4xx = 1;
     }
 
     for (const [field, amount] of Object.entries(metrics)) {
       if (amount > 0) {
-        await store.hIncrBy(key, field, amount);
+        fields[field] = (fields[field] ?? 0) + amount;
       }
     }
 
-    const existing = await store.hGetAll(key);
-    const rounded = Math.round(durationMs);
-    const currentMin = Number(existing.minMs ?? 0);
-    const currentMax = Number(existing.maxMs ?? 0);
-
-    if (existing.minMs === undefined || rounded < currentMin) {
-      await store.hSet(key, "minMs", String(rounded));
-    }
-
-    if (existing.maxMs === undefined || rounded > currentMax) {
-      await store.hSet(key, "maxMs", String(rounded));
-    }
-
-    await store.expire(key, METRIC_TTL_SECONDS);
-    await store.sAdd(pendingMinutesKey, String(epoch));
-    await store.expire(pendingMinutesKey, METRIC_TTL_SECONDS);
-    await store.sAdd(minuteRoutesKey(epoch), route);
-    await store.expire(minuteRoutesKey(epoch), METRIC_TTL_SECONDS);
+    await store.recordMinuteMetrics({
+      key,
+      pendingKey: pendingMinutesKey,
+      routesKey: minuteRoutesKey(epoch),
+      ttlSeconds: METRIC_TTL_SECONDS,
+      epoch: String(epoch),
+      route,
+      durationMs: roundedDuration,
+      fields,
+    });
   } catch (error) {
     logWarn("metrics_record_failed", {
       errorCode: "metrics_record_failed",

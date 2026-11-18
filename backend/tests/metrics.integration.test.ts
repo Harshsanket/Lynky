@@ -41,6 +41,9 @@ const run = testMongoUri ? test : test.skip;
 const route = "/test-metrics";
 const failureRoute = "/test-short-code-exhausted";
 const idempotentRoute = "/test-idempotent";
+const mappingRoute = "/test-metrics-mapping";
+const storeFailureRoute = "/test-metrics-store-failure";
+const zeroRoute = "/test-metrics-zero";
 
 before(async () => {
   if (!testMongoUri) return;
@@ -53,7 +56,16 @@ after(async () => {
 
   await Promise.all([
     MetricsMinute.deleteMany({
-      route: { $in: [route, failureRoute, idempotentRoute] },
+      route: {
+        $in: [
+          route,
+          failureRoute,
+          idempotentRoute,
+          mappingRoute,
+          storeFailureRoute,
+          zeroRoute,
+        ],
+      },
     }),
     MetricsHour.deleteMany({
       route: {
@@ -61,19 +73,49 @@ after(async () => {
           route,
           failureRoute,
           idempotentRoute,
+          mappingRoute,
+          storeFailureRoute,
+          zeroRoute,
           "/api/v1/urls",
           "/:code",
         ],
       },
     }),
     MetricsDaily.deleteMany({
-      route: { $in: [route, failureRoute, idempotentRoute] },
+      route: {
+        $in: [
+          route,
+          failureRoute,
+          idempotentRoute,
+          mappingRoute,
+          storeFailureRoute,
+          zeroRoute,
+        ],
+      },
     }),
     MetricsMonthly.deleteMany({
-      route: { $in: [route, failureRoute, idempotentRoute] },
+      route: {
+        $in: [
+          route,
+          failureRoute,
+          idempotentRoute,
+          mappingRoute,
+          storeFailureRoute,
+          zeroRoute,
+        ],
+      },
     }),
     ErrorLog.deleteMany({
-      route: { $in: [route, failureRoute, idempotentRoute] },
+      route: {
+        $in: [
+          route,
+          failureRoute,
+          idempotentRoute,
+          mappingRoute,
+          storeFailureRoute,
+          zeroRoute,
+        ],
+      },
     }),
   ]);
   await mongoose.disconnect();
@@ -195,6 +237,129 @@ run("counts short-code exhaustion and records its error code", async () => {
   }).lean();
 
   assert.ok(error);
+});
+
+run("maps status classes and passthrough metrics into one hash", async () => {
+  const store = new MemoryCacheStore();
+
+  setCacheStoreForTests(store);
+
+  const minute = Math.floor(Date.now() / 60_000);
+  const key = `metrics:${minute}:${mappingRoute}`;
+  const request = () =>
+    ({ baseUrl: mappingRoute, route: { path: "" } }) as any;
+
+  const ok = fakeResponse(200);
+
+  ok.locals.metrics.cacheHit = 2;
+
+  await recordRequestMetrics(request(), ok, 12);
+
+  let hash = await store.hGetAll(key);
+
+  assert.equal(hash.requests, "1");
+  assert.equal(hash.success, "1");
+  assert.equal(hash.failed, undefined);
+  assert.equal(hash.cacheHit, "2");
+  assert.equal(hash.latencySum, "12");
+  assert.equal(hash.latencyCount, "1");
+  assert.equal(hash.minMs, "12");
+  assert.equal(hash.maxMs, "12");
+
+  const throttled = fakeResponse(429);
+
+  throttled.locals.metrics.redisHit = 3;
+
+  await recordRequestMetrics(request(), throttled, 8);
+
+  const missing = fakeResponse(404);
+
+  await recordRequestMetrics(request(), missing, 15);
+
+  const failed = fakeResponse(500);
+
+  failed.locals.metrics.redisMiss = 4;
+
+  await recordRequestMetrics(request(), failed, 20);
+
+  hash = await store.hGetAll(key);
+
+  assert.equal(hash.requests, "4");
+  assert.equal(hash.success, "1");
+  assert.equal(hash.failed, "3");
+  assert.equal(hash.status429, "1");
+  assert.equal(hash.status4xx, "1");
+  assert.equal(hash.status5xx, "1");
+  assert.equal(hash.errorCount, "1");
+  assert.equal(hash.redisHit, "3");
+  assert.equal(hash.redisMiss, "4");
+  assert.equal(hash.minMs, "8");
+  assert.equal(hash.maxMs, "20");
+});
+
+run("records zero-duration requests without a zero latency delta", async () => {
+  const store = new MemoryCacheStore();
+
+  setCacheStoreForTests(store);
+
+  await recordRequestMetrics(
+    { baseUrl: zeroRoute, route: { path: "" } } as any,
+    fakeResponse(200),
+    0
+  );
+
+  const minute = Math.floor(Date.now() / 60_000);
+  const hash = await store.hGetAll(`metrics:${minute}:${zeroRoute}`);
+
+  assert.equal(hash.requests, "1");
+  assert.equal(hash.latencyCount, "1");
+  assert.equal(hash.latencySum, undefined);
+  assert.equal(hash.minMs, "0");
+  assert.equal(hash.maxMs, "0");
+
+  setCacheStoreForTests(new MemoryCacheStore());
+});
+
+run("swallows metric-store failures and logs the warning", async () => {
+  const store = new MemoryCacheStore();
+
+  store.recordMinuteMetrics = async () => {
+    throw new Error("redis down");
+  };
+
+  setCacheStoreForTests(store);
+
+  const warnings: string[] = [];
+  const originalWarn = console.warn;
+
+  console.warn = (line?: unknown) => {
+    warnings.push(String(line));
+  };
+
+  try {
+    await assert.doesNotReject(() =>
+      recordRequestMetrics(
+        { baseUrl: storeFailureRoute, route: { path: "" } } as any,
+        fakeResponse(200),
+        5
+      )
+    );
+  } finally {
+    console.warn = originalWarn;
+    setCacheStoreForTests(new MemoryCacheStore());
+  }
+
+  assert.ok(
+    warnings.some((line) => line.includes("metrics_record_failed")),
+    warnings.join("\n")
+  );
+
+  const minute = Math.floor(Date.now() / 60_000);
+
+  assert.deepEqual(
+    await store.hGetAll(`metrics:${minute}:${storeFailureRoute}`),
+    {}
+  );
 });
 
 run("declares the expected TTL indexes", async () => {
