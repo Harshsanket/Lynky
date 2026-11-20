@@ -38,9 +38,48 @@ test("derives the same code from the same urlHash and salt", () => {
   const second = deriveCodeFromSalt(urlHash, salt);
 
   assert.equal(first, second);
-  assert.equal(first.length, 6);
+  assert.match(first, /^[0-9A-Za-z]{4,6}$/);
   assert.equal(isValidCode(first), true);
   assert.match(first, /^[0-9A-Za-z]+$/);
+});
+
+test("variable lengths are deterministic and cover the configured range", () => {
+  const urlHash = `${"d".repeat(64)}`;
+  const counts: Record<number, number> = { 4: 0, 5: 0, 6: 0 };
+
+  for (let index = 0; index < 1_000; index++) {
+    const salt = generateCodeSalt();
+    const code = deriveCodeFromSalt(urlHash, salt);
+
+    assert.match(code, /^[0-9A-Za-z]{4,6}$/);
+    assert.equal(isValidCode(code), true);
+    assert.equal(
+      deriveCodeFromSalt(urlHash, salt),
+      code,
+      "re-derivation must be stable"
+    );
+
+    counts[code.length] = (counts[code.length] ?? 0) + 1;
+  }
+
+  for (const length of [4, 5, 6]) {
+    assert.ok(
+      counts[length]! >= 250,
+      `length ${length} appeared ${counts[length]} times`
+    );
+  }
+});
+
+test("an explicit codeLength overrides variable derivation", () => {
+  const urlHash = `${"e".repeat(64)}`;
+  const salt = generateCodeSalt();
+
+  for (const length of [4, 5, 6]) {
+    const code = deriveCodeFromSalt(urlHash, salt, length);
+
+    assert.equal(code.length, length);
+    assert.match(code, /^[0-9A-Za-z]+$/);
+  }
 });
 
 test("different urlHash or salt derives a different code", () => {

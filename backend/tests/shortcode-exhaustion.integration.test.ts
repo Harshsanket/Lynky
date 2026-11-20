@@ -45,6 +45,7 @@ before(async () => {
   if (!testMongoUri) return;
 
   await connectDatabase();
+  await Link.init();
   await Link.deleteMany({ urlHash: { $regex: /^seed-/ } });
 
   const expiresAt = new Date(Date.now() + 60_000);

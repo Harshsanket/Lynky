@@ -68,6 +68,7 @@ before(async () => {
   if (!testMongoUri) return;
 
   await connectDatabase();
+  await Link.init();
   await Stats.deleteOne({ key: "global" });
 });
 

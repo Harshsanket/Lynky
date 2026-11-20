@@ -56,13 +56,22 @@ export const isValidCodeSalt = (value: unknown): value is string =>
  * Derive a stable short code from `urlHash + codeSalt`.
  *
  * The HMAC input is versioned so the derivation can change without silently
- * changing existing codes. New codes use the configured maximum length; the
- * derived base62 string is truncated to that length.
+ * changing existing codes. With no explicit `codeLength`, the length is
+ * derived deterministically from the last digest byte in
+ * [MIN_CODE_LENGTH, MAX_CODE_LENGTH]; the code body is the leading base62
+ * characters of the same digest. Re-deriving the same (urlHash, salt) pair
+ * therefore always returns the same (length, code) pair.
+ *
+ * The modulo range is slightly biased (at most 1/256 per bucket for the
+ * configured 4–6 range), which is acceptable for short-code generation.
+ * Average space is roughly 1.9e10 versus 5.7e10 for fixed 6 characters
+ * (62^4/62^5/62^6 split evenly); collision handling stays with the
+ * insert-first E11000 retry loop and MAX_CODE_ATTEMPTS.
  */
 export const deriveCodeFromSalt = (
   urlHash: string,
   codeSalt: string,
-  codeLength = env.MAX_CODE_LENGTH
+  codeLength?: number
 ): string => {
   if (!isValidCodeSalt(codeSalt)) {
     throw new Error("Invalid code salt");
@@ -72,6 +81,12 @@ export const deriveCodeFromSalt = (
     .createHmac("sha256", CODE_SALT_KEY)
     .update(`${CODE_SALT_VERSION}:${urlHash}:${codeSalt}`)
     .digest();
+
+  const length =
+    codeLength ??
+    env.MIN_CODE_LENGTH +
+      (digest[digest.length - 1]! %
+        (env.MAX_CODE_LENGTH - env.MIN_CODE_LENGTH + 1));
 
   let value = BigInt(`0x${digest.toString("hex")}`);
   let encoded = "";
@@ -86,5 +101,5 @@ export const deriveCodeFromSalt = (
     encoded = BASE62_ALPHABET[0]!;
   }
 
-  return encoded.slice(0, codeLength);
+  return encoded.slice(0, length);
 };

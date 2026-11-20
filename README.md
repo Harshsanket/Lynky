@@ -57,8 +57,8 @@ Backend values mirror `backend/.env.example`; frontend values mirror `frontend/.
 | `PORT` | `5001` | Backend listen port |
 | `NODE_ENV` | `development` | `development`, `test`, or `production` |
 | `FRONTEND_URL` | `http://localhost:5173` | Allowed frontend origin; required in production |
-| `MIN_CODE_LENGTH` | `4` | Minimum generated short-code length |
-| `MAX_CODE_LENGTH` | `6` | Maximum generated short-code length |
+| `MIN_CODE_LENGTH` | `4` | Minimum generated short-code length; default generation picks a length in `[MIN, MAX]` |
+| `MAX_CODE_LENGTH` | `6` | Maximum generated short-code length; the code length is derived deterministically from the same HMAC digest |
 | `MAX_CODE_ATTEMPTS` | `10` | Short-code retry limit after collisions |
 | `MAX_URL_LENGTH` | `640` | Maximum accepted input URL length |
 | `ALLOW_PRIVATE_SUFFIXES` | `false` | Allow hosts on private public-suffix entries such as `*.eu.org` |
@@ -138,6 +138,7 @@ The cleaned URL is what gets deduplicated and stored. The original input is not 
 - Tracker rules compile into exact sets, prefix arrays, key regexes, and value-conditioned pair patterns; excluded-host sets skip generic groups on listed hosts.
 - Dedupe uses keyed HMAC-SHA-256 (`urlHash`); redirect lookup uses keyed HMAC-SHA-256 (`codeHash`).
 - Short codes are re-derived from `urlHash + codeSalt`; `codeSalt` makes repeat shorten requests stable across cache loss.
+- Generated codes use a deterministic length in `[MIN_CODE_LENGTH, MAX_CODE_LENGTH]` (4–6 by default), derived from the same HMAC digest as the code body.
 - Destinations are stored as AES-256-GCM ciphertext; the authentication tag detects corruption.
 
 ### Filters
