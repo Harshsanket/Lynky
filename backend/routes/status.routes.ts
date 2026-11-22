@@ -7,6 +7,7 @@ import {
 const router = Router();
 
 router.get("/status", statusController);
+router.post("/status", statusController);
 router.get("/stats", publicStatsController);
 
 export default router;
